@@ -7,7 +7,7 @@ import SiteNavbar from '../components/Navbar';
 import SearchBar from '../components/SearchBar';
 import useSearch from '../hooks/useSearch';
 import { calculateTyrePricing } from '../lib/tyres';
-
+const API = import.meta.env.VITE_API_URL || '';
 const initialFilters = {
   category: 'all',
   brand: 'all',
@@ -64,7 +64,7 @@ export default function SearchPage() {
 
     const fetchProducts = async () => {
       try {
-        const response = await fetch('/api/products');
+        const response = await fetch(`${API}/api/products`);
         const data = await response.json();
 
         if (!response.ok) {
