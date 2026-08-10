@@ -1,46 +1,49 @@
 const express = require('express');
 const router = express.Router();
-const User = require('../models/User');
+const { db } = require('../utils/firebase');
 const { protect } = require('../middleware/auth');
 
 // Get search history
 router.get('/history', protect, async (req, res) => {
   try {
-    const user = await User.findById(req.user._id);
-    res.json(user.recentSearches || []);
+    const snapshot = await db.collection('search_history')
+      .where('user_id', '==', req.user.id)
+      .orderBy('created_at', 'desc')
+      .limit(20)
+      .get();
+    
+    const history = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    res.json(history);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Save a search (or multiple if array)
+// Save a search
 router.post('/save', protect, async (req, res) => {
-  const { query, category, queries } = req.body;
+  const { query, category } = req.body;
   try {
-    const user = await User.findById(req.user._id);
-    user.recentSearches = user.recentSearches || [];
+    if (!query) return res.status(400).json({ error: 'Query is required' });
 
-    const addQuery = (qText, cText, time) => {
-      // Remove if existing to put it at the front
-      user.recentSearches = user.recentSearches.filter(s => s.query.toLowerCase() !== qText.toLowerCase());
-      user.recentSearches.unshift({ query: qText, category: cText, timestamp: time || new Date() });
+    // Check for existing and remove to keep unique top
+    const existing = await db.collection('search_history')
+      .where('user_id', '==', req.user.id)
+      .where('query', '==', query)
+      .get();
+    
+    const batch = db.batch();
+    existing.docs.forEach(doc => batch.delete(doc.ref));
+    await batch.commit();
+
+    const searchData = { 
+      user_id: req.user.id, 
+      query, 
+      category: category || null,
+      created_at: new Date().toISOString()
     };
 
-    if (queries && Array.isArray(queries)) {
-      queries.forEach(q => addQuery(q.query, q.category, q.timestamp));
-    } else if (query) {
-      addQuery(query, category, new Date());
-    } else {
-      return res.status(400).json({ error: 'Provide query or queries array' });
-    }
-
-    // Keep only last 20
-    if (user.recentSearches.length > 20) {
-      user.recentSearches = user.recentSearches.slice(0, 20);
-    }
-
-    await user.save();
-    res.json(user.recentSearches);
+    const docRef = await db.collection('search_history').add(searchData);
+    res.json({ id: docRef.id, ...searchData });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -49,13 +52,19 @@ router.post('/save', protect, async (req, res) => {
 // Clear all history
 router.delete('/clear', protect, async (req, res) => {
   try {
-    const user = await User.findById(req.user._id);
-    user.recentSearches = [];
-    await user.save();
-    res.json({ success: true, recentSearches: [] });
+    const snapshot = await db.collection('search_history')
+      .where('user_id', '==', req.user.id)
+      .get();
+    
+    const batch = db.batch();
+    snapshot.docs.forEach(doc => batch.delete(doc.ref));
+    await batch.commit();
+
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
 module.exports = router;
+

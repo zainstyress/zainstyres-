@@ -1,102 +1,118 @@
 const express = require('express');
 const router = express.Router();
-const User = require('../models/User');
+const { db } = require('../utils/firebase');
 const { protect } = require('../middleware/auth');
 
 // Get user cart
 router.get('/', protect, async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).populate('cart.productId');
-    res.json(user.cart);
+    const cartDoc = await db.collection('cart').doc(req.user.id).get();
+    
+    if (!cartDoc.exists) {
+      return res.json({ success: true, items: [] });
+    }
+    
+    const cartData = cartDoc.data();
+    const items = cartData.items || [];
+    
+    // In Firestore, we might want to fetch product details if they aren't stored in the cart
+    // For now, let's assume the cart stores basic info or we fetch them here.
+    // To match the previous logic of joining with products:
+    const detailedItems = await Promise.all(items.map(async (item) => {
+      const productDoc = await db.collection('products').doc(item.productId).get();
+      return {
+        ...productDoc.data(),
+        id: productDoc.id,
+        quantity: item.quantity,
+        cartItemId: item.productId // Using productId as cartItemId for simplicity
+      };
+    }));
+    
+    res.json({ success: true, items: detailedItems });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
 // Add to cart
-router.post('/add', protect, async (req, res) => {
+router.post('/', protect, async (req, res) => {
   const { productId, quantity = 1 } = req.body;
   try {
-    const user = await User.findById(req.user._id);
-    const existingItem = user.cart.find(c => c.productId.toString() === productId);
+    const cartRef = db.collection('cart').doc(req.user.id);
+    const cartDoc = await cartRef.get();
     
-    if (existingItem) {
-      existingItem.quantity += quantity;
-    } else {
-      user.cart.push({ productId, quantity, addedAt: new Date() });
+    let items = [];
+    if (cartDoc.exists) {
+      items = cartDoc.data().items || [];
     }
     
-    await user.save();
-    await user.populate('cart.productId');
-    res.json(user.cart);
+    const existingIndex = items.findIndex(item => item.productId === productId);
+    
+    if (existingIndex > -1) {
+      items[existingIndex].quantity += quantity;
+    } else {
+      items.push({ productId, quantity });
+    }
+    
+    await cartRef.set({ items }, { merge: true });
+    
+    res.json({ success: true, message: 'Item added to cart' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
 // Update cart item quantity
-router.put('/update', protect, async (req, res) => {
-  const { productId, quantity } = req.body;
+router.put('/:productId', protect, async (req, res) => {
+  const { quantity } = req.body;
+  const { productId } = req.params;
   try {
-    const user = await User.findById(req.user._id);
-    const item = user.cart.find(c => c.productId.toString() === productId);
+    const cartRef = db.collection('cart').doc(req.user.id);
+    const cartDoc = await cartRef.get();
     
-    if (item) {
-      if (quantity <= 0) {
-        user.cart = user.cart.filter(c => c.productId.toString() !== productId);
-      } else {
-        item.quantity = quantity;
-      }
-      await user.save();
+    if (!cartDoc.exists) {
+      return res.status(404).json({ success: false, message: 'Cart not found' });
     }
     
-    await user.populate('cart.productId');
-    res.json(user.cart);
+    let items = cartDoc.data().items || [];
+    const existingIndex = items.findIndex(item => item.productId === productId);
+    
+    if (existingIndex === -1) {
+      return res.status(404).json({ success: false, message: 'Item not in cart' });
+    }
+    
+    if (quantity <= 0) {
+      items.splice(existingIndex, 1);
+    } else {
+      items[existingIndex].quantity = quantity;
+    }
+    
+    await cartRef.update({ items });
+    res.json({ success: true, message: 'Cart updated' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
 // Remove item from cart
-router.delete('/remove/:productId', protect, async (req, res) => {
+router.delete('/:productId', protect, async (req, res) => {
   try {
-    const user = await User.findById(req.user._id);
-    user.cart = user.cart.filter(c => c.productId.toString() !== req.params.productId);
-    await user.save();
+    const cartRef = db.collection('cart').doc(req.user.id);
+    const cartDoc = await cartRef.get();
     
-    await user.populate('cart.productId');
-    res.json(user.cart);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Merge cart from local storage
-router.post('/merge', protect, async (req, res) => {
-  const { localCart } = req.body; // array of { productId, quantity }
-  if (!Array.isArray(localCart)) return res.status(400).json({ error: 'localCart must be an array' });
-
-  try {
-    const user = await User.findById(req.user._id);
+    if (!cartDoc.exists) {
+      return res.status(404).json({ success: false, message: 'Cart not found' });
+    }
     
-    localCart.forEach(localItem => {
-      const existing = user.cart.find(c => c.productId.toString() === localItem.productId);
-      if (existing) {
-        // Keep higher quantity
-        if (localItem.quantity > existing.quantity) {
-          existing.quantity = localItem.quantity;
-        }
-      } else {
-        user.cart.push({ productId: localItem.productId, quantity: localItem.quantity, addedAt: new Date() });
-      }
-    });
-
-    await user.save();
-    await user.populate('cart.productId');
-    res.json(user.cart);
+    let items = cartDoc.data().items || [];
+    const filteredItems = items.filter(item => item.productId !== req.params.productId);
+    
+    await cartRef.update({ items: filteredItems });
+    res.json({ success: true, message: 'Item removed' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
 module.exports = router;
+

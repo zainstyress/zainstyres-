@@ -1,21 +1,35 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
-import Auth from './pages/Auth';
-import AdminPanel from './pages/AdminPanel';
-import Dashboard from './pages/Dashboard';
-import Checkout from './pages/Checkout';
 import {
   ShoppingBag, Search, Menu, X, Star, ShieldCheck, Truck, Clock, Filter,
   ShoppingCart, Plus, Minus, Trash2, ArrowRight, User, Mail, Smartphone,
-  MapPin, Car, CreditCard, ChevronLeft, Info, Award, Zap, Sparkles, Send,
-  Loader2, Wrench, Package, LogOut, ChevronRight, Globe, Shield
+  MapPin, Car, CreditCard, ChevronLeft, Info, Award, Zap, Sparkles,
+  Wrench, Package, LogOut, ChevronRight, Globe, Shield
 } from 'lucide-react';
+import PageLoader from './components/PageLoader';
+import SiteNavbar from './components/Navbar';
+import BranchCard from './components/BranchCard';
 import { fadeInUp, fadeInLeft, fadeInRight, staggerContainer, scaleUp } from './components/AnimationSuite';
+import { listenActiveBranches } from './lib/branches';
+import AdminPanel from './pages/AdminPanel';
 
-const API = ''; // Use proxy for all environments
+const AuthPage = lazy(() => import('./pages/AuthPage'));
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
+const AdminReviewsPage = lazy(() => import('./pages/AdminReviewsPage'));
+const AdminTyreForm = lazy(() => import('./pages/AdminTyreForm'));
+const AdminBranchesPage = lazy(() => import('./pages/AdminBranchesPage'));
+const DeliveryDetailsPage = lazy(() => import('./pages/DeliveryDetailsPage'));
+const Checkout = lazy(() => import('./pages/CheckoutNew'));
+const OrderSuccess = lazy(() => import('./pages/OrderSuccess'));
+const ProductDetailPage = lazy(() => import('./pages/ProductDetailPage'));
+const TyresShop = lazy(() => import('./pages/TyresShop'));
+const TyreDetail = lazy(() => import('./pages/TyreDetail'));
+const BranchesPage = lazy(() => import('./pages/BranchesPage'));
+const SearchPage = lazy(() => import('./pages/SearchPage'));
+const Khelgavalo = lazy(() => import('./pages/Khelgavalo'));
 
 // ─── Background ───────────────────────────────────────────────────────────────
 const BackgroundAnimation = () => (
@@ -42,32 +56,47 @@ const BackgroundAnimation = () => (
 );
 
 // ─── Logo ─────────────────────────────────────────────────────────────────────
-const PremiumLogo = ({ settings }) => (
-  <div className="flex items-center space-x-4 group cursor-pointer">
-    <div className="relative">
-      <div className="w-14 h-14 bg-gradient-to-br from-rose-600 to-rose-700 rounded-2xl flex items-center justify-center transform group-hover:rotate-[10deg] transition-all duration-700 shadow-[0_15px_35px_rgba(225,29,72,0.3)] border border-white/10">
-        <Car className="text-white w-8 h-8" />
-      </div>
+const PremiumLogo = ({ settings }) => {
+  const { scrollY } = useScroll();
+  const rotate = useTransform(scrollY, [0, 1000], [0, 360 * 5]); // Rotate 5 full turns over 1000px
+
+  return (
+    <div className="flex min-w-0 items-center space-x-2 group cursor-pointer sm:space-x-4">
       <motion.div 
-        animate={{ scale: [1, 1.2, 1] }} 
-        transition={{ duration: 2, repeat: Infinity }}
-        className="absolute -bottom-1 -right-1 w-5 h-5 bg-white rounded-full border-2 border-[#050505] flex items-center justify-center shadow-lg"
+        style={{ rotate }}
+        className="w-12 h-12 shrink-0 bg-zinc-900 rounded-full border-4 border-rose-600 flex items-center justify-center relative shadow-[0_0_20px_rgba(225,29,72,0.3)]"
       >
-        <Zap className="w-3 h-3 text-rose-600" />
+        {/* Tyre Tread Design */}
+        <div className="absolute inset-0 rounded-full border-4 border-dashed border-zinc-700 opacity-50" />
+        <div className="w-6 h-6 bg-zinc-800 rounded-full border-2 border-zinc-600 flex items-center justify-center">
+          <div className="w-2 h-2 bg-zinc-400 rounded-full" />
+        </div>
+        {/* Tread Marks */}
+        {[...Array(8)].map((_, i) => (
+          <div 
+            key={i}
+            className="absolute w-1 h-2 bg-rose-600 top-0 left-1/2 -translate-x-1/2 origin-[0_6px]"
+            style={{ transform: `translateX(-50%) rotate(${i * 45}deg)` }}
+          />
+        ))}
       </motion.div>
-    </div>
-    <div className="flex flex-col leading-tight">
-      <span className="text-3xl font-black italic tracking-tighter text-white uppercase group-hover:tracking-normal transition-all duration-700">
-        {settings?.storeName?.replace('Tyres', '') || 'Zain'}
-        <span className="text-rose-600">Tyres</span>
-      </span>
-      <div className="flex items-center space-x-2">
-        <div className="h-[1px] w-4 bg-rose-500/50" />
-        <span className="text-[10px] font-black text-rose-500 tracking-[0.4em] uppercase">Performance Studio</span>
+      <div className="flex min-w-0 flex-col leading-none">
+        <div className="flex min-w-0 items-baseline space-x-1">
+          <span className="truncate text-lg font-black italic tracking-tighter text-white uppercase transition-all duration-700 group-hover:tracking-normal sm:text-3xl">
+            ZAINS
+          </span>
+          <span className="truncate text-lg font-black italic tracking-tighter text-rose-600 uppercase transition-all duration-700 group-hover:tracking-tight sm:text-3xl">
+            TYRES
+          </span>
+        </div>
+        <div className="mt-1 flex max-w-full items-center space-x-2 overflow-hidden">
+          <div className="h-[1px] w-full bg-gradient-to-r from-rose-600 to-transparent opacity-50" />
+          <span className="whitespace-nowrap text-[7px] font-black uppercase tracking-[0.3em] text-rose-500">Trusted Tyre Dealer</span>
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 
 // ─── Navbar ───────────────────────────────────────────────────────────────────
@@ -96,6 +125,7 @@ const Navbar = ({ cartCount, onOpenCart, onNavigate, currentView, settings }) =>
             {[
               { label: 'Studio', id: 'home' },
               { label: 'Inventory', id: 'tyres' },
+              { label: 'Branches', id: 'branches' },
               { label: 'Add-ons', id: 'accessories' },
               { label: 'The Hub', id: 'contactus' },
             ].map(item => {
@@ -103,7 +133,7 @@ const Navbar = ({ cartCount, onOpenCart, onNavigate, currentView, settings }) =>
               return (
                 <button
                   key={item.id}
-                  onClick={() => onNavigate(item.id)}
+                  onClick={() => (item.id === 'branches' ? window.location.href = '/branches' : onNavigate(item.id))}
                   className={`group relative text-[11px] font-black uppercase tracking-[0.3em] transition-all ${
                     isActive ? 'text-rose-500' : 'text-zinc-400 hover:text-white'
                   }`}
@@ -123,7 +153,7 @@ const Navbar = ({ cartCount, onOpenCart, onNavigate, currentView, settings }) =>
           <div className="flex items-center space-x-6">
             <button
               onClick={onOpenCart}
-              className="relative group p-2"
+              className="relative group flex min-h-[44px] min-w-[44px] items-center justify-center p-2"
             >
               <div className="absolute inset-0 bg-rose-600 rounded-2xl blur-lg opacity-0 group-hover:opacity-40 transition-opacity" />
               <div className="relative flex items-center space-x-3 bg-white/5 hover:bg-white/10 px-5 py-3 rounded-2xl border border-white/10 transition-all">
@@ -139,26 +169,28 @@ const Navbar = ({ cartCount, onOpenCart, onNavigate, currentView, settings }) =>
             {user ? (
               <div className="flex items-center gap-4">
                 <button 
-                  onClick={() => onNavigate('account')}
-                  className={`flex items-center gap-3 bg-white/5 hover:bg-white/10 border border-white/10 px-4 py-2.5 rounded-2xl transition-all ${currentView === 'account' ? 'border-rose-500/50' : ''}`}
+                  onClick={() => window.location.href = '/'}
+                  className="flex min-h-[44px] items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-2.5 transition-all hover:border-rose-500/50 hover:bg-white/10"
                 >
                   {user.profileImage ? (
-                    <img src={user.profileImage} className="w-6 h-6 rounded-lg object-cover" alt="" />
+                    <img src={user.profileImage} loading="lazy" decoding="async" className="w-6 h-6 rounded-lg object-cover" alt="" />
                   ) : (
                     <div className="w-6 h-6 bg-rose-600 rounded-lg flex items-center justify-center text-[10px] font-black">{user.name?.charAt(0) || user.email?.charAt(0)}</div>
                   )}
-                  <span className="text-[10px] font-black text-white uppercase tracking-widest hidden sm:inline">{user.name?.split(' ')[0] || 'Profile'}</span>
+                  <span className="text-[10px] font-black text-white uppercase tracking-widest hidden sm:inline">
+                    {user.name?.split(' ')[0] || user.email?.split('@')[0] || 'Profile'}
+                  </span>
                 </button>
-                <button onClick={logout} className="p-2.5 bg-rose-600/10 hover:bg-rose-600/20 text-rose-500 rounded-xl transition-all border border-rose-500/20" title="Logout">
+                <button onClick={logout} className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl border border-rose-500/20 bg-rose-600/10 p-2.5 text-rose-500 transition-all hover:bg-rose-600/20" title="Logout">
                   <LogOut size={16} />
                 </button>
               </div>
             ) : (
-              <button onClick={() => window.location.href = '/login'} className="p-3 bg-white/5 rounded-2xl text-zinc-400 hover:text-white border border-white/10">
+              <button onClick={() => window.location.href = '/login'} className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-2xl border border-white/10 bg-white/5 p-3 text-zinc-400 hover:text-white">
                 <User size={20} />
               </button>
             )}
-            <button className="lg:hidden p-3 bg-white/5 rounded-2xl text-zinc-400" onClick={() => setMobileOpen(!mobileOpen)}>
+            <button className="lg:hidden flex min-h-[44px] min-w-[44px] items-center justify-center rounded-2xl bg-white/5 p-3 text-zinc-400" onClick={() => setMobileOpen(!mobileOpen)}>
               {mobileOpen ? <X size={22} /> : <Menu size={22} />}
             </button>
           </div>
@@ -171,14 +203,21 @@ const Navbar = ({ cartCount, onOpenCart, onNavigate, currentView, settings }) =>
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="lg:hidden absolute top-24 left-6 right-6 glass-panel rounded-[2.5rem] p-8 overflow-hidden"
+            className="lg:hidden absolute top-24 left-4 right-4 glass-panel rounded-[2rem] p-6 max-h-[calc(100vh-7rem)] overflow-y-auto shadow-2xl"
           >
             <div className="flex flex-col space-y-6">
-              {['Home', 'Tyres', 'Accessories', 'Contact Us'].map(item => (
+              {['Home', 'Tyres', 'Branches', 'Accessories', 'Contact Us'].map(item => (
                 <button 
                   key={item} 
-                  onClick={() => { onNavigate(item.toLowerCase().replace(' ', '')); setMobileOpen(false); }}
-                  className="text-left text-lg font-black uppercase tracking-[0.2em] text-zinc-400 hover:text-rose-500 border-b border-white/5 pb-4 last:border-0"
+                  onClick={() => {
+                    if (item === 'Branches') {
+                      window.location.href = '/branches';
+                    } else {
+                      onNavigate(item.toLowerCase().replace(' ', ''));
+                    }
+                    setMobileOpen(false);
+                  }}
+                  className="min-h-[44px] border-b border-white/5 py-4 text-left text-lg font-black uppercase tracking-[0.2em] text-zinc-400 hover:text-rose-500 last:border-0"
                 >
                   {item}
                 </button>
@@ -192,102 +231,44 @@ const Navbar = ({ cartCount, onOpenCart, onNavigate, currentView, settings }) =>
 };
 
 
-// ─── AI Concierge ─────────────────────────────────────────────────────────────
-const AIConsierge = ({ products }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [query, setQuery] = useState('');
-  const [messages, setMessages] = useState([
-    { role: 'assistant', content: "Welcome to the ZainTyres Performance Studio. I am your ✨ AI Concierge. Tell me about your driving style or vehicle, and I'll recommend the perfect setup." }
-  ]);
-  const [isLoading, setIsLoading] = useState(false);
-  const scrollRef = useRef(null);
+// ─── Product Card ─────────────────────────────────────────────────────────────
+const ProductCard = ({ product, onAddToCart, settings }) => {
+  const images = product.images && product.images.length > 0 ? product.images : [product.image || 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=400'];
+  const [currentIdx, setCurrentIdx] = useState(0);
+  const whatsappNumber = settings?.whatsapp || '917006628255';
+  const navigate = useNavigate();
 
-  useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [messages]);
-
-  const callGemini = async (userText) => {
-    setIsLoading(true);
-    setMessages(prev => [...prev, { role: 'user', content: userText }]);
-    setQuery('');
-    const systemPrompt = `You are the ZainTyres Performance Concierge. Expert in luxury automotive tyres and accessories. Our inventory: ${JSON.stringify(products.slice(0, 8))}. Be professional, concise, recommend specific products. Use premium tone with terms like tread depth, cornering stability, NVH levels.`;
+  const handleBuyNow = (tyre, navigateToCheckout) => {
+    // Reuse the onAddToCart callback to add the product, then go to checkout.
     try {
-      const res = await fetch(`${API}/api/ai/chat`, {
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userText, systemPrompt })
-      });
-      const data = await res.json();
-      const text = data.text || "I'm recalibrating. Please try again.";
-      setMessages(prev => [...prev, { role: 'assistant', content: text }]);
-    } catch {
-      setMessages(prev => [...prev, { role: 'assistant', content: "Connection failed. Please try again shortly." }]);
-    } finally {
-      setIsLoading(false);
+      onAddToCart && onAddToCart(tyre);
+      if (navigateToCheckout) navigateToCheckout();
+      else window.location.href = '/checkout';
+    } catch (err) {
+      // Fallback: open WhatsApp only if add-to-cart fails
+      const message = `Hi Zain's Tyres! I want to buy:\n\n` +
+        `*${tyre.name}*\n` +
+        `Brand: ${tyre.brand}\n` +
+        `Size: ${tyre.size}\n` +
+        `Price: ₹${tyre.price}\n\n` +
+        `Please confirm availability and payment details.`;
+      const encodedMessage = encodeURIComponent(message);
+      const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodedMessage}`;
+      window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
     }
   };
 
   return (
-    <div className="fixed bottom-8 right-8 z-[100] flex flex-col items-end">
-      {isOpen && (
-        <div className="mb-4 w-[350px] sm:w-[400px] h-[500px] bg-zinc-900/95 backdrop-blur-2xl rounded-[2.5rem] border border-rose-500/30 flex flex-col overflow-hidden shadow-[0_0_50px_rgba(225,29,72,0.2)]">
-          <div className="p-5 bg-rose-600 flex justify-between items-center">
-            <div className="flex items-center space-x-3">
-              <Sparkles className="text-white" size={18} />
-              <span className="text-white font-black italic uppercase tracking-tighter text-sm">AI Concierge</span>
-            </div>
-            <button onClick={() => setIsOpen(false)} className="text-white/80 hover:text-white"><X size={18} /></button>
-          </div>
-          <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 space-y-4" style={{ scrollbarWidth: 'thin', scrollbarColor: '#333 transparent' }}>
-            {messages.map((m, i) => (
-              <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] p-4 rounded-2xl text-xs leading-relaxed font-medium ${m.role === 'user' ? 'bg-rose-600 text-white rounded-tr-none' : 'bg-zinc-800 text-zinc-300 rounded-tl-none'
-                  }`}>{m.content}</div>
-              </div>
-            ))}
-            {isLoading && (
-              <div className="flex justify-start">
-                <div className="bg-zinc-800 p-4 rounded-2xl flex items-center space-x-2">
-                  <Loader2 size={14} className="animate-spin text-rose-500" />
-                  <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">Analyzing...</span>
-                </div>
-              </div>
-            )}
-          </div>
-          <form onSubmit={e => { e.preventDefault(); if (query.trim()) callGemini(query); }} className="p-4 border-t border-white/5 flex gap-2">
-            <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Ask for advice..."
-              className="flex-1 bg-zinc-800 rounded-xl px-4 py-3 text-xs text-white placeholder:text-zinc-600 focus:ring-1 focus:ring-rose-500 outline-none border-none" />
-            <button type="submit" className="w-10 h-10 bg-rose-600 rounded-xl flex items-center justify-center text-white">
-              <Send size={15} />
-            </button>
-          </form>
-        </div>
-      )}
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="relative w-16 h-16 bg-rose-600 rounded-full flex items-center justify-center text-white shadow-[0_0_40px_rgba(225,29,72,0.5)] hover:scale-110 transition-transform active:scale-95"
-      >
-        {isOpen ? <X size={26} /> : <Sparkles size={26} />}
-        {!isOpen && <div className="absolute -top-1 -left-1 w-4 h-4 bg-white rounded-full border-2 border-rose-600 animate-bounce" />}
-      </button>
-    </div>
-  );
-};
-
-// ─── Product Card ─────────────────────────────────────────────────────────────
-const ProductCard = ({ product, onAddToCart }) => {
-  const images = product.images && product.images.length > 0 ? product.images : [product.image || 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=400'];
-  const [currentIdx, setCurrentIdx] = useState(0);
-
-  return (
   <motion.div 
     variants={fadeInUp}
-    className="group relative luxury-card rounded-[3rem] overflow-hidden"
+    className="group relative flex h-full min-w-0 flex-col overflow-hidden rounded-[3rem] luxury-card"
   >
-    <div className="relative h-80 overflow-hidden bg-zinc-900 group/image">
+    <div className="relative h-36 overflow-hidden bg-zinc-900 group/image md:h-56">
       <img
         src={images[currentIdx]}
         alt={product.name}
+        loading="lazy"
+        decoding="async"
         onError={e => { e.target.src = 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=400'; }}
         className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-all duration-500"
       />
@@ -312,38 +293,46 @@ const ProductCard = ({ product, onAddToCart }) => {
           {product.condition || product.subType}
         </span>
       </div>
-
-      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-500 bg-black/40 backdrop-blur-sm">
-        <button 
-          onClick={() => onAddToCart(product)}
-          className="bg-white text-black px-8 py-4 rounded-2xl font-black italic tracking-tighter uppercase flex items-center gap-2 hover:bg-rose-600 hover:text-white transition-all transform translate-y-4 group-hover:translate-y-0"
-        >
-          <Plus size={18} /> Add to Bag
-        </button>
-      </div>
     </div>
 
-    <div className="p-10">
-      <div className="flex justify-between items-start mb-4">
-        <div className="flex items-center space-x-2 text-rose-500">
+    <div className="flex flex-1 flex-col p-2 md:p-10">
+      <div className="mb-3 flex items-start justify-between md:mb-4">
+        <div className="flex items-center space-x-2 text-xs text-rose-500 md:text-sm">
           <Star size={12} className="fill-current" />
           <span className="text-[10px] font-black uppercase tracking-widest">{product.rating || '4.9'}</span>
         </div>
-        <span className="text-[11px] font-black text-zinc-600 uppercase tracking-widest">{product.brand}</span>
+        <span className="text-[10px] font-black uppercase tracking-widest text-zinc-600 md:text-[11px]">{product.brand}</span>
       </div>
       
-      <h3 className="text-2xl font-black text-white italic tracking-tighter uppercase mb-4 group-hover:text-rose-500 transition-colors">
+      <h3 className="mb-3 overflow-hidden text-sm font-black italic uppercase tracking-tighter text-white transition-colors group-hover:text-rose-500 md:mb-4 md:text-2xl [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
         {product.name}
       </h3>
       
-      <div className="flex items-end justify-between border-t border-white/5 pt-6">
+      <div className="flex items-end justify-between border-t border-white/5 pt-3 md:pt-6">
         <div>
-          <p className="text-zinc-600 text-[9px] font-black uppercase tracking-[0.3em] mb-1">Acquisition Cost</p>
-          <p className="text-3xl font-black italic tracking-tighter text-white">₹{(product.price || 0).toLocaleString()}</p>
+          <p className="mb-1 hidden text-[9px] font-black uppercase tracking-[0.3em] text-zinc-600 md:block">Acquisition Cost</p>
+          <p className="text-lg font-black italic tracking-tighter text-white md:text-3xl">₹{(product.price || 0).toLocaleString()}</p>
         </div>
-        <div className="bg-white/5 p-3 rounded-xl border border-white/5 text-zinc-500 text-[10px] font-black uppercase tracking-widest">
+        <div className="rounded-xl border border-white/5 bg-white/5 p-2 text-[10px] font-black uppercase tracking-widest text-zinc-500 md:p-3">
            {product.category}
         </div>
+      </div>
+
+      <div className="mt-3 grid gap-2 md:mt-6 md:gap-3">
+        <button
+          type="button"
+          onClick={() => onAddToCart(product)}
+          className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl bg-white px-3 py-2 text-xs font-black italic uppercase tracking-tighter text-black transition-all hover:bg-zinc-200 md:px-0 md:py-4 md:text-sm"
+        >
+          <Plus size={18} /> Add to Bag
+        </button>
+        <button
+          type="button"
+          onClick={() => handleBuyNow(product, () => navigate('/checkout'))}
+          className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl bg-rose-600 px-3 py-2 text-xs font-black italic uppercase tracking-tighter text-white transition-all hover:bg-rose-700 shadow-lg shadow-rose-600/30 md:px-0 md:py-4 md:text-sm"
+        >
+          <Zap size={18} /> Buy Now
+        </button>
       </div>
     </div>
   </motion.div>
@@ -365,10 +354,10 @@ const CartSidebar = ({ cart, setCart, onClose, settings, API, user }) => {
     try {
       if (isDelete) {
         await fetch(`${API}/api/cart/${productId}`, { method: 'DELETE', credentials: 'include' });
-        setCart(p => p.filter(i => (i.productId?._id || i.id) !== productId));
+        setCart(p => p.filter(i => (i.productId?.id || i.id) !== productId));
       } else {
         await fetch(`${API}/api/cart/${productId}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({quantity}), credentials: 'include' });
-        setCart(p => p.map(i => (i.productId?._id || i.id) === productId ? { ...i, quantity } : i));
+        setCart(p => p.map(i => (i.productId?.id || i.id) === productId ? { ...i, quantity } : i));
       }
     } catch {}
   };
@@ -395,21 +384,21 @@ const CartSidebar = ({ cart, setCart, onClose, settings, API, user }) => {
           ) : cart.map(item => (
             <div key={item.id} className="flex gap-6 group">
               <div className="w-24 h-24 shrink-0 overflow-hidden rounded-[1.5rem] bg-zinc-900 border border-white/5">
-                <img src={item.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt="" />
+                <img src={item.image} loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt="" />
               </div>
               <div className="flex-1">
                 <div className="flex justify-between items-start mb-1">
                   <h4 className="font-black text-white uppercase italic tracking-tight text-sm">{item.name}</h4>
-                  <button onClick={() => updateCartItem(item.id || item.productId?._id, undefined, true)} className="text-zinc-700 hover:text-rose-500 transition-colors ml-2">
+                  <button onClick={() => updateCartItem(item.id || item.productId?.id, undefined, true)} className="text-zinc-700 hover:text-rose-500 transition-colors ml-2">
                     <Trash2 size={15} />
                   </button>
                 </div>
                 <p className="text-rose-500 font-black text-xs mb-4">₹{item.price.toLocaleString()}</p>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center bg-zinc-900 rounded-xl border border-white/5 p-1">
-                    <button onClick={() => updateCartItem(item.id || item.productId?._id, Math.max(1, item.quantity - 1))} className="w-7 h-7 flex items-center justify-center text-white font-black text-sm">−</button>
+                    <button onClick={() => updateCartItem(item.id || item.productId?.id, Math.max(1, item.quantity - 1))} className="w-7 h-7 flex items-center justify-center text-white font-black text-sm">−</button>
                     <span className="w-8 text-center text-xs font-black text-white">{item.quantity}</span>
-                    <button onClick={() => updateCartItem(item.id || item.productId?._id, item.quantity + 1)} className="w-7 h-7 flex items-center justify-center text-white font-black text-sm">+</button>
+                    <button onClick={() => updateCartItem(item.id || item.productId?.id, item.quantity + 1)} className="w-7 h-7 flex items-center justify-center text-white font-black text-sm">+</button>
                   </div>
                   <p className="font-black text-white italic text-sm">₹{(item.price * item.quantity).toLocaleString()}</p>
                 </div>
@@ -428,7 +417,7 @@ const CartSidebar = ({ cart, setCart, onClose, settings, API, user }) => {
             </div>
             
             <button
-              onClick={() => { onClose(); navigate('/checkout'); }}
+                  onClick={() => { onClose(); navigate('/checkout'); }}
               className="block w-full mb-3 bg-white hover:bg-zinc-200 text-black py-4 rounded-[2rem] font-black text-lg italic tracking-tighter shadow-2xl transition-all text-center"
             >
               PROCEED TO CHECKOUT
@@ -457,9 +446,9 @@ const HomeView = ({ settings, onNavigate }) => (
       initial="initial"
       whileInView="whileInView"
       viewport={{ once: true }}
-      className="min-h-[85vh] flex flex-col justify-center items-center text-center px-6 relative overflow-hidden"
+      className="min-h-[85vh] flex w-full max-w-[100vw] flex-col items-center justify-center overflow-hidden px-4 text-center relative sm:px-6"
     >
-      <div className="max-w-6xl relative z-10">
+      <div className="max-w-6xl relative z-10 w-full overflow-hidden">
         <motion.div variants={fadeInUp} className="inline-flex items-center space-x-4 bg-white/5 px-8 py-3 rounded-full border border-white/10 mb-12 backdrop-blur-md">
           <div className="w-2 h-2 bg-rose-600 rounded-full animate-ping" />
           <span className="text-[10px] font-black uppercase tracking-[0.5em] text-rose-500">
@@ -467,7 +456,11 @@ const HomeView = ({ settings, onNavigate }) => (
           </span>
         </motion.div>
         
-        <motion.h1 variants={fadeInUp} className="text-8xl md:text-[11rem] font-black italic tracking-[calc(-0.05em)] uppercase leading-[0.8] mb-16 text-white text-glow-rose">
+        <motion.h1
+          variants={fadeInUp}
+          className="mb-10 break-words px-2 font-black italic uppercase leading-[0.82] tracking-[calc(-0.05em)] text-white text-glow-rose md:mb-16"
+          style={{ fontSize: 'clamp(2.5rem, 10vw, 9rem)' }}
+        >
           {settings?.heroHeading || 'PRECISION'}
           <br />
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-600 via-rose-500 to-rose-700">
@@ -475,7 +468,7 @@ const HomeView = ({ settings, onNavigate }) => (
           </span>
         </motion.h1>
 
-        <motion.p variants={fadeInUp} className="max-w-2xl mx-auto text-zinc-400 font-medium text-lg md:text-xl mb-16 leading-relaxed">
+        <motion.p variants={fadeInUp} className="mx-auto mb-12 max-w-2xl px-6 text-base font-medium leading-relaxed text-zinc-400 sm:px-0 sm:text-lg md:mb-16 md:text-xl">
           Unlock the true potential of your vehicle with our world-class inventory of high-performance tyres and bespoke automotive accessories.
         </motion.p>
 
@@ -487,7 +480,7 @@ const HomeView = ({ settings, onNavigate }) => (
               EXPLORE UNITS <ArrowRight size={24} />
             </span>
           </button>
-          <button onClick={() => onNavigate('contactus')}
+            <button onClick={() => window.location.href = '/branches'}
             className="px-16 py-6 glass-panel hover:bg-white/10 rounded-[2rem] font-black text-2xl italic tracking-tighter text-white transition-all duration-500 border-white/10">
             LOCATE STUDIO
           </button>
@@ -496,13 +489,56 @@ const HomeView = ({ settings, onNavigate }) => (
 
       {/* Hero Visual Elements */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full pointer-events-none overflow-hidden opacity-30">
-        <svg viewBox="0 0 100 100" className="w-[150%] h-[150%] text-rose-600/10">
+        <svg viewBox="0 0 100 100" className="h-full w-full text-rose-600/10 md:h-[150%] md:w-[150%]">
           <circle cx="50" cy="50" r="48" fill="none" stroke="currentColor" strokeWidth="0.1" strokeDasharray="1 2" />
           <circle cx="50" cy="50" r="40" fill="none" stroke="currentColor" strokeWidth="0.1" />
           <circle cx="50" cy="50" r="30" fill="none" stroke="currentColor" strokeWidth="0.1" strokeDasharray="3 1" />
         </svg>
       </div>
     </motion.section>
+
+    {/* Tyre Size Finder */}
+    <section className="max-w-screen-2xl mx-auto px-4 sm:px-6 pb-24">
+      <div className="grid gap-6 overflow-hidden rounded-[34px] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(244,63,94,0.18),transparent_40%),linear-gradient(135deg,rgba(255,255,255,0.05),rgba(255,255,255,0.01))] p-6 md:grid-cols-[1.2fr_0.8fr] md:p-10">
+        <div>
+          <p className="mb-4 inline-flex items-center gap-2 rounded-full border border-rose-500/20 bg-rose-500/10 px-4 py-2 text-[10px] font-black uppercase tracking-[0.35em] text-rose-300">
+            <Sparkles size={13} /> Find the right tyre
+          </p>
+          <h2 className="text-3xl font-black italic uppercase tracking-tighter text-white md:text-5xl">Match the exact fit for your car or bike.</h2>
+          <p className="mt-4 max-w-2xl text-sm leading-relaxed text-zinc-400 md:text-base">Pick the width, aspect ratio, and rim size, then jump straight into search results for that fit.</p>
+          <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {['175 / 65 R14', '195 / 55 R16', '205 / 60 R15'].map((size) => (
+              <button
+                key={size}
+                type="button"
+                onClick={() => { window.location.href = `/search?q=${encodeURIComponent(size)}`; }}
+                className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-4 text-left transition-colors hover:border-rose-500/30 hover:bg-white/[0.08]"
+              >
+                <span className="block text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">Quick find</span>
+                <span className="mt-2 block text-lg font-black italic uppercase tracking-tighter text-white">{size}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="grid gap-4 rounded-[28px] border border-white/5 bg-black/20 p-5 md:p-6">
+          <div className="grid grid-cols-3 gap-3">
+            {['Width', 'Aspect', 'Rim'].map((label) => (
+              <div key={label} className="rounded-2xl border border-white/5 bg-white/[0.03] p-4 text-center">
+                <p className="text-[9px] font-black uppercase tracking-[0.3em] text-zinc-500">{label}</p>
+                <p className="mt-3 text-2xl font-black text-white">--</p>
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => { window.location.href = '/search'; }}
+            className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-2xl bg-white px-5 py-4 text-sm font-black uppercase tracking-[0.25em] text-black transition-transform hover:scale-[1.01]"
+          >
+            Open tyre search <ArrowRight size={15} />
+          </button>
+        </div>
+      </div>
+    </section>
 
     {/* Brand Marquee */}
     <section className="py-24 border-y border-white/5 bg-zinc-950/50 backdrop-blur-sm overflow-hidden">
@@ -552,14 +588,14 @@ const HomeView = ({ settings, onNavigate }) => (
 
 
 // ─── Products Grid ────────────────────────────────────────────────────────────
-const ProductsSection = ({ products, loading, error, activeFilter, setActiveFilter, onAddToCart, currentView, onNavigate }) => {
+const ProductsSection = ({ products, loading, error, activeFilter, setActiveFilter, onAddToCart, currentView, onNavigate, settings }) => {
   const filtered = useMemo(() => {
     if (activeFilter === 'All') return products;
     return products.filter(p => p.category === activeFilter);
   }, [products, activeFilter]);
 
   return (
-    <section className="max-w-screen-2xl mx-auto px-6 py-24">
+    <section className="max-w-screen-2xl mx-auto px-4 py-24 sm:px-6">
       <div className="flex flex-col md:flex-row justify-between items-end mb-20 gap-10">
         <div>
           <h2 className="text-4xl md:text-6xl font-black italic tracking-tighter uppercase text-white mb-3">
@@ -567,10 +603,10 @@ const ProductsSection = ({ products, loading, error, activeFilter, setActiveFilt
           </h2>
           <p className="text-zinc-600 font-black text-[10px] uppercase tracking-[0.4em] italic">Currency: Indian Rupee (₹) • VAT Included</p>
         </div>
-        <div className="flex bg-zinc-900/50 p-2 rounded-[2rem] border border-white/5 backdrop-blur-xl">
+        <div className="flex max-w-full overflow-hidden rounded-[2rem] border border-white/5 bg-zinc-900/50 p-2 backdrop-blur-xl">
           {['All', 'Tyres', 'Accessories'].map(f => (
             <button key={f} onClick={() => { setActiveFilter(f); if (f !== 'All' && currentView === 'home') onNavigate(f.toLowerCase()); }}
-              className={`px-8 py-3.5 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${activeFilter === f ? 'bg-rose-600 text-white shadow-xl' : 'text-zinc-500 hover:text-white'}`}>
+              className={`min-h-[44px] rounded-2xl px-5 py-3.5 font-black text-[10px] uppercase tracking-widest transition-all ${activeFilter === f ? 'bg-rose-600 text-white shadow-xl' : 'text-zinc-500 hover:text-white'}`}>
               {f}
             </button>
           ))}
@@ -584,11 +620,11 @@ const ProductsSection = ({ products, loading, error, activeFilter, setActiveFilt
       )}
 
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-10">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-2 md:gap-10 xl:grid-cols-4">
           {[...Array(8)].map((_, i) => (
             <div key={i} className="bg-zinc-900/40 rounded-[2.5rem] border border-white/5 overflow-hidden animate-pulse">
-              <div className="h-64 bg-zinc-800" />
-              <div className="p-8 space-y-3">
+              <div className="h-36 bg-zinc-800 md:h-64" />
+              <div className="space-y-3 p-2 md:p-8">
                 <div className="h-3 bg-zinc-800 rounded w-1/3" />
                 <div className="h-5 bg-zinc-800 rounded" />
                 <div className="h-4 bg-zinc-800 rounded w-2/3" />
@@ -602,13 +638,35 @@ const ProductsSection = ({ products, loading, error, activeFilter, setActiveFilt
           <p className="font-black uppercase tracking-widest">No products found.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-10">
-          {filtered.map(p => <ProductCard key={p.id} product={p} onAddToCart={onAddToCart} />)}
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-2 md:gap-10 xl:grid-cols-4">
+          {filtered.map(p => <ProductCard key={p.id} product={p} onAddToCart={onAddToCart} settings={settings} />)}
         </div>
       )}
     </section>
   );
 };
+
+const BranchesPreviewSection = ({ branches }) => (
+  <section className="max-w-screen-2xl mx-auto px-4 sm:px-6 pb-24">
+    <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div>
+        <h2 className="text-4xl md:text-6xl font-black italic tracking-tighter uppercase text-white mb-3">
+          OUR <span className="text-rose-600">BRANCHES</span>
+        </h2>
+        <p className="text-zinc-600 font-black text-[10px] uppercase tracking-[0.4em] italic">Visit the nearest studio for premium service</p>
+      </div>
+      <button onClick={() => window.location.href = '/branches'} className="inline-flex min-h-[44px] items-center justify-center rounded-2xl bg-white px-5 py-3 text-sm font-black uppercase tracking-[0.25em] text-black transition-transform hover:scale-[1.01]">
+        View branches
+      </button>
+    </div>
+
+    <div className="grid gap-4 md:grid-cols-2">
+      {branches.slice(0, 2).map((branch) => (
+        <BranchCard key={branch.id} branch={branch} variant="compact" />
+      ))}
+    </div>
+  </section>
+);
 
 // ─── Contact View ─────────────────────────────────────────────────────────────
 const ContactView = ({ branches, loading, settings }) => (
@@ -713,6 +771,81 @@ const ContactView = ({ branches, loading, settings }) => (
 );
 
 
+// ─── Account View ─────────────────────────────────────────────────────────────
+const AccountView = ({ user }) => {
+  if (!user) return null;
+  return (
+    <div className="max-w-4xl mx-auto px-6 py-40">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="glass-panel rounded-[3rem] overflow-hidden border-rose-600/20 shadow-2xl"
+      >
+        <div className="h-48 bg-gradient-to-r from-rose-600 to-rose-800 relative">
+          <div className="absolute -bottom-16 left-12 p-2 bg-[#0A0A0B] rounded-[2rem] border-4 border-[#0A0A0B]">
+            <div className="w-32 h-32 bg-zinc-900 rounded-[1.5rem] flex items-center justify-center text-4xl font-black text-rose-500 shadow-xl border border-white/5 uppercase">
+              {user.name?.[0] || user.email?.[0]}
+            </div>
+          </div>
+        </div>
+        
+        <div className="pt-24 px-12 pb-12">
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-8">
+            <div>
+              <h1 className="text-5xl font-black italic uppercase tracking-tighter text-white mb-2">
+                {user.name || user.email?.split('@')[0] || 'Anonymous User'}
+              </h1>
+              <p className="text-zinc-500 font-black text-[10px] uppercase tracking-[0.4em] italic flex items-center gap-2">
+                <Globe size={14} className="text-rose-600" /> Member since {new Date().getFullYear()}
+              </p>
+            </div>
+            <div className="flex gap-4">
+              <div className="bg-white/5 border border-white/10 px-6 py-4 rounded-2xl">
+                <p className="text-[9px] font-black text-zinc-600 uppercase tracking-widest mb-1">Status</p>
+                <p className="text-xs font-black text-green-500 uppercase flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" /> Verified
+                </p>
+              </div>
+              <div className="bg-white/5 border border-white/10 px-6 py-4 rounded-2xl">
+                <p className="text-[9px] font-black text-zinc-600 uppercase tracking-widest mb-1">Tier</p>
+                <p className="text-xs font-black text-rose-500 uppercase">Platinum</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-16">
+            <div className="space-y-6">
+              <div className="flex items-center gap-6 p-6 bg-white/5 rounded-3xl border border-white/5 hover:border-rose-500/20 transition-all group">
+                <div className="w-12 h-12 bg-rose-600/10 rounded-2xl flex items-center justify-center text-rose-500 group-hover:scale-110 transition-transform"><Mail size={20} /></div>
+                <div>
+                  <p className="text-[9px] font-black text-zinc-600 uppercase tracking-widest mb-1">Contact Protocol</p>
+                  <p className="text-sm font-bold text-white">{user.email}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-6 p-6 bg-white/5 rounded-3xl border border-white/5 hover:border-rose-500/20 transition-all group">
+                <div className="w-12 h-12 bg-rose-600/10 rounded-2xl flex items-center justify-center text-rose-500 group-hover:scale-110 transition-transform"><Smartphone size={20} /></div>
+                <div>
+                  <p className="text-[9px] font-black text-zinc-600 uppercase tracking-widest mb-1">Security Sync</p>
+                  <p className="text-sm font-bold text-white">{user.phone || 'Not Linked'}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-rose-600/5 rounded-[2.5rem] p-10 border border-rose-500/10 flex flex-col justify-center">
+              <h3 className="text-2xl font-black italic uppercase tracking-tighter text-white mb-4">Elite Support</h3>
+              <p className="text-zinc-500 text-sm font-medium leading-relaxed mb-8">Your account is secured with aerospace-grade encryption. Need priority assistance?</p>
+              <button className="w-full bg-rose-600 hover:bg-rose-700 text-white py-4 rounded-2xl font-black italic uppercase tracking-tighter transition-all shadow-lg shadow-rose-600/20">
+                CONNECT TO CONCIERGE
+              </button>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+
 // ─── Main Public App ──────────────────────────────────────────────────────────
 function PublicApp() {
   const [view, setView] = useState('home');
@@ -726,8 +859,9 @@ function PublicApp() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [activeFilter, setActiveFilter] = useState('All');
 
-  const { user, API } = useAuth();
+  const { user, API, logout } = useAuth();
   const location = useLocation();
+  const routerNavigate = useNavigate();
 
   useEffect(() => {
     fetch(`${API}/api/products`)
@@ -739,14 +873,25 @@ function PublicApp() {
       })
       .catch(() => { setProductError('Server offline. Ensure backend is running.'); setProducts([]); setLoadingProducts(false); });
 
-    fetch(`${API}/api/branches`)
-      .then(r => r.ok ? r.json() : Promise.reject())
-      .then(data => { 
-        setBranches(Array.isArray(data) ? data : []); 
-        setLoadingBranches(false); 
-      })
-      .catch(() => { setBranches([]); setLoadingBranches(false); });
+  }, [user, API]);
 
+  useEffect(() => listenActiveBranches((nextBranches) => {
+    setBranches(nextBranches);
+    setLoadingBranches(false);
+  }, async (error) => {
+    console.warn('Public branch listener failed, falling back to API:', error?.message || error);
+    try {
+      const response = await fetch(`${API}/api/branches`);
+      const data = response.ok ? await response.json() : [];
+      setBranches(Array.isArray(data) ? data.filter((branch) => branch.isActive !== false) : []);
+    } catch {
+      setBranches([]);
+    } finally {
+      setLoadingBranches(false);
+    }
+  }), [API]);
+
+  useEffect(() => {
     fetch(`${API}/api/settings`)
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(data => setSettings(data))
@@ -762,29 +907,39 @@ function PublicApp() {
     }
   }, [user, API]);
 
-  async function addToCart(p) {
-    if (!user) {
-      alert("Please log in to add products to your cart.");
-      window.location.href = '/login';
-      return;
-    }
+  async function addToCart(p, redirectToCheckout = false) {
+    // Add to localStorage for checkout flow
+    const saved = localStorage.getItem('cartItems') || '[]';
+    const cartItems = JSON.parse(saved);
+    const existingItem = cartItems.find(item => item.id === p.id);
     
-    // DB sync
-    try {
-      await fetch(`${API}/api/cart`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json'},
-        body: JSON.stringify({ productId: p.id, quantity: 1 }),
-        credentials: 'include'
+    if (existingItem) {
+      existingItem.qty = (existingItem.qty || 1) + 1;
+    } else {
+      cartItems.push({
+        id: p.id,
+        name: p.name,
+        price: p.price,
+        image: p.image || p.imageUrl || p.images?.[0] || '',
+        qty: 1,
       });
-      // Update local optimistically
-      setCart(prev => {
-        const exists = prev.find(i => i.id === p.id);
-        if (exists) return prev.map(i => i.id === p.id ? { ...i, quantity: i.quantity + 1 } : i);
-        return [...prev, { ...p, quantity: 1 }];
-      });
-      setIsCartOpen(true);
-    } catch (e) { console.error('Add to cart failed'); }
+    }
+    localStorage.setItem('cartItems', JSON.stringify(cartItems));
+
+    // Sync with backend if user is logged in
+    if (user) {
+      try {
+        await fetch(`${API}/api/cart`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json'},
+          body: JSON.stringify({ productId: p.id, quantity: 1 }),
+          credentials: 'include'
+        });
+      } catch (e) { console.error('Backend cart sync failed'); }
+    }
+
+    // Redirect to delivery details page
+    routerNavigate('/delivery-details');
   }
 
   function navigate(to) {
@@ -801,8 +956,7 @@ function PublicApp() {
   return (
     <div className="min-h-screen bg-[#0A0A0B] text-zinc-100 font-sans selection:bg-rose-600 selection:text-white overflow-x-hidden">
       <BackgroundAnimation />
-      <Navbar currentView={view} onNavigate={navigate} cartCount={cartCount} onOpenCart={() => setIsCartOpen(true)} settings={settings} />
-      <AIConsierge products={products} />
+      <SiteNavbar currentView={view} onNavigate={navigate} cartCount={cartCount} onOpenCart={() => setIsCartOpen(true)} settings={settings} user={user} onLogout={logout} products={products} />
 
       <main className="relative z-20">
         {view === 'home' && <HomeView settings={settings} onNavigate={navigate} />}
@@ -816,8 +970,10 @@ function PublicApp() {
             onAddToCart={addToCart}
             currentView={view}
             onNavigate={navigate}
+            settings={settings}
           />
         )}
+        {showProducts && <BranchesPreviewSection branches={branches} />}
         {view === 'contactus' && <ContactView branches={branches} loading={loadingBranches} settings={settings} />}
         {view === 'account' && <AccountView user={user} />}
       </main>
@@ -840,9 +996,46 @@ function PublicApp() {
           
           <div>
             <h4 className="text-white font-black uppercase text-xs tracking-[0.4em] mb-12 italic">The Collection</h4>
+
+        <div className="fixed bottom-24 right-4 z-[110] md:bottom-8">
+          <a
+            href={`https://wa.me/${settings?.whatsapp || '917006628255'}?text=${encodeURIComponent('Hi Zain\'s Tyres, I need help finding the right tyre.')}`}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-green-500 text-white shadow-[0_20px_50px_rgba(34,197,94,0.35)] transition-transform hover:scale-105"
+            aria-label="WhatsApp us"
+          >
+            <Smartphone size={20} />
+          </a>
+        </div>
+
+        <nav className="fixed inset-x-0 bottom-0 z-[105] border-t border-white/10 bg-[#0b0b0c]/95 px-3 py-3 backdrop-blur-xl md:hidden">
+          <div className="grid grid-cols-5 gap-2 text-center">
+            {[
+              { label: 'Home', action: () => navigate('home'), icon: <Car size={16} /> },
+              { label: 'Search', action: () => { window.location.href = '/search'; }, icon: <Search size={16} /> },
+              { label: 'Shop', action: () => navigate('tyres'), icon: <Package size={16} /> },
+              { label: 'Branch', action: () => { window.location.href = '/branches'; }, icon: <MapPin size={16} /> },
+              { label: 'Bag', action: () => setIsCartOpen(true), icon: <ShoppingBag size={16} /> },
+            ].map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                onClick={item.action}
+                className="flex min-h-[44px] flex-col items-center justify-center gap-1 rounded-2xl border border-white/5 bg-white/[0.03] py-2 text-[9px] font-black uppercase tracking-[0.25em] text-zinc-400 transition-colors hover:text-white"
+              >
+                {item.icon}
+                <span>{item.label}</span>
+              </button>
+            ))}
+          </div>
+        </nav>
             <ul className="space-y-6">
               <li onClick={() => navigate('tyres')} className="text-zinc-500 hover:text-rose-500 cursor-pointer transition-all font-black uppercase text-[10px] tracking-widest flex items-center gap-3 group">
                 <div className="w-1 h-1 bg-rose-600 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" /> Tyres Studio
+              </li>
+              <li onClick={() => window.location.href = '/branches'} className="text-zinc-500 hover:text-rose-500 cursor-pointer transition-all font-black uppercase text-[10px] tracking-widest flex items-center gap-3 group">
+                <div className="w-1 h-1 bg-rose-600 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" /> Branches
               </li>
               <li onClick={() => navigate('accessories')} className="text-zinc-500 hover:text-rose-500 cursor-pointer transition-all font-black uppercase text-[10px] tracking-widest flex items-center gap-3 group">
                 <div className="w-1 h-1 bg-rose-600 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" /> Performance Add-ons
@@ -865,6 +1058,9 @@ function PublicApp() {
           <p className="text-[10px] font-black text-zinc-700 uppercase tracking-[0.4em]">
             © 2026 {settings?.storeName?.toUpperCase() || 'ZAINTYRES'} PERFORMANCE STUDIO. ALL RIGHTS RESERVED.
           </p>
+          <p className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.4em]">
+            MADE BY <span className="text-rose-600">RITIK SHARMA</span>
+          </p>
           <div className="flex items-center space-x-10">
             <span className="text-[9px] font-black text-zinc-800 uppercase tracking-widest">Privacy Protocol</span>
             <span className="text-[9px] font-black text-zinc-800 uppercase tracking-widest">Ownership Terms</span>
@@ -885,9 +1081,13 @@ function PublicApp() {
 function ProtectedRoute({ children, adminOnly = false }) {
   const { user, loading } = useAuth();
   
-  if (loading) return <div className="min-h-screen bg-[#050505] flex items-center justify-center text-white">Loading Auth...</div>;
-  if (!user) return <Navigate to="/auth" replace />;
-  if (adminOnly && user.role !== 'admin') return <Navigate to="/" replace />;
+  if (loading) return <div className="min-h-screen bg-[#050505] flex items-center justify-center text-white text-xl font-black tracking-widest">Verifying Access...</div>;
+  if (!user) return <Navigate to={adminOnly ? '/khelgavalo' : '/login'} replace />;
+  if (user.isBlocked) return <Navigate to={adminOnly ? '/khelgavalo' : '/login'} replace />;
+  if (adminOnly && user.role !== 'admin') {
+    console.warn('Access denied — user role:', user.role, '| email:', user.email);
+    return <Navigate to="/khelgavalo" replace />;
+  }
   
   return children;
 }
@@ -898,45 +1098,101 @@ export default function App() {
     <AuthProvider>
       <ToastProvider>
         <Router>
+          <Suspense fallback={<PageLoader />}>
           <Routes>
-            <Route path="/auth" element={<Auth />} />
-            <Route path="/login" element={<Navigate to="/auth" replace />} />
-            <Route path="/signup" element={<Navigate to="/auth" replace />} />
-            
+            <Route path="/auth" element={<AuthPage />} />
+            <Route path="/login" element={<AuthPage />} />
+            <Route path="/signup" element={<AuthPage />} />
+            <Route path="/khelgavalo" element={<Khelgavalo />} />
+            <Route path="/shop" element={<TyresShop />} />
+            <Route path="/tyres" element={<TyresShop />} />
+            <Route path="/branches" element={<BranchesPage />} />
+            <Route path="/locate" element={<BranchesPage />} />
+            <Route path="/studios" element={<BranchesPage />} />
+            <Route path="/search" element={<SearchPage />} />
+            <Route path="/product/:tyreId" element={<ProductDetailPage />} />
+            <Route path="/tyres/:tyreId" element={<TyreDetail />} />
             <Route path="/admin" element={
+              <ProtectedRoute adminOnly={true}>
+                <AdminDashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/branches" element={
+              <ProtectedRoute adminOnly={true}>
+                <AdminBranchesPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/reviews" element={
+              <ProtectedRoute adminOnly={true}>
+                <AdminReviewsPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/tyres/new" element={
+              <ProtectedRoute adminOnly={true}>
+                <AdminTyreForm />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/tyres/:tyreId" element={
+              <ProtectedRoute adminOnly={true}>
+                <AdminTyreForm />
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/yehlepakadmerachoco" element={
+              <ProtectedRoute adminOnly={true}>
+                <AdminPanel />
+              </ProtectedRoute>
+            } />
+            <Route path="/yehlepakadmerachoco/:tab" element={
               <ProtectedRoute adminOnly={true}>
                 <AdminPanel />
               </ProtectedRoute>
             } />
             
-            <Route path="/dashboard" element={
-              <ProtectedRoute>
-                <Dashboard />
-              </ProtectedRoute>
-            } />
+            <Route path="/dashboard" element={<Navigate to="/" replace />} />
+            <Route path="/profile" element={<Navigate to="/" replace />} />
             
+            <Route path="/delivery-details" element={<DeliveryDetailsPage />} />
             <Route path="/checkout" element={<CheckoutWrapper />} />
+            <Route path="/order-confirmation/:orderId" element={<OrderSuccess />} />
             <Route path="/*" element={<PublicApp />} />
           </Routes>
+          </Suspense>
         </Router>
       </ToastProvider>
     </AuthProvider>
   );
 }
 
-// Wrapper to pass cart to checkout
+// Wrapper to pass guest cart data into checkout
 function CheckoutWrapper() {
   const [cart, setCart] = useState([]);
-  const [settings, setSettings] = useState(null);
-  const { user, API } = useAuth();
-  
-  useEffect(() => {
-    if (user) {
-      fetch(`${API}/api/cart`, { credentials: 'include' }).then(r=>r.json()).then(data => {
-        if(data && data.items) setCart(data.items.map(i => ({...i.productId, quantity: i.quantity, price: i.productId.price, image: i.productId.image, name: i.productId.name})));
-      });
-    }
-  }, [user, API]);
 
-  return <Checkout cart={cart} clearCart={() => setCart([])} settings={settings} />
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('cartItems');
+      if (!saved) return;
+      const items = JSON.parse(saved);
+      if (!Array.isArray(items)) return;
+      const normalized = items
+        .map((item) => ({
+          id: item.id || item.productId || item._id,
+          name: item.name || item.title || 'Item',
+          image: item.image || item.imageUrl || item.images?.[0] || '',
+          price: Number(item.price || item.unitPrice || 0),
+          qty: Number(item.qty || item.quantity || 1),
+        }))
+        .filter((item) => item.id && item.price > 0 && item.qty > 0);
+      setCart(normalized);
+    } catch {
+      setCart([]);
+    }
+  }, []);
+
+  const clearCart = () => {
+    localStorage.removeItem('cartItems');
+    setCart([]);
+  };
+
+  return <Checkout cart={cart} clearCart={clearCart} />;
 }

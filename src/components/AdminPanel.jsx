@@ -1,11 +1,63 @@
 import React, { useState, useEffect } from 'react';
+import { collection, onSnapshot } from 'firebase/firestore';
 import {
   Plus, Trash2, Package, DollarSign, BarChart3, Users, LogOut,
   TrendingUp, X, Save, Search, MapPin, Smartphone, Clock, Settings,
-  Edit3, Check, ShoppingBag, Car, Globe, Link
+  Edit3, Check, ShoppingBag, Car, Globe, Link, Camera, Menu
 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import CameraModal from './CameraModal';
+import { db } from '../firebase';
 
 const API = ''; // Proxy-aware API URL
+
+const MAX_IMAGES = 10;
+
+function normalizeOrderStatus(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return 'pending';
+  if (['pending', 'placed', 'order placed', 'processing', 'packed'].includes(raw)) return 'pending';
+  if (['confirmed', 'paid', 'success'].includes(raw)) return 'confirmed';
+  if (['dispatched', 'shipped', 'out for delivery', 'delivered'].includes(raw)) return 'dispatched';
+  return raw;
+}
+
+function formatOrderStatus(value) {
+  const normalized = normalizeOrderStatus(value);
+  if (normalized === 'confirmed') return 'Confirmed';
+  if (normalized === 'dispatched') return 'Dispatched';
+  return 'Pending';
+}
+
+function compressImageFile(file, maxWidth = 800, quality = 0.8) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Failed to read image file'));
+    reader.onload = () => {
+      const image = new Image();
+      image.onload = () => {
+        const scale = Math.min(1, maxWidth / image.width);
+        const width = Math.round(image.width * scale);
+        const height = Math.round(image.height * scale);
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext('2d');
+        context.drawImage(image, 0, 0, width, height);
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            reject(new Error('Failed to compress image'));
+            return;
+          }
+          resolve(new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' }));
+        }, 'image/jpeg', quality);
+      };
+      image.onerror = () => reject(new Error('Failed to load image for compression'));
+      image.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 // ─── Input Helper ─────────────────────────────────────────────────────────────
 const Field = ({ label, value, onChange, type = 'text', placeholder = '', disabled = false, as = 'input', rows = 3, children }) => (
@@ -28,30 +80,42 @@ const Field = ({ label, value, onChange, type = 'text', placeholder = '', disabl
 
 // ─── Add / Edit Product Modal ─────────────────────────────────────────────────
 const ProductModal = ({ initial, onClose, onSave }) => {
-  const blank = { name: '', brand: '', category: 'Tyres', subType: 'New', price: '', stock: '', rating: '4.5', condition: 'New', description: '', image: '', images: [], vehicle: '' };
-  const [form, setForm] = useState(initial ? { ...initial, vehicle: (initial.vehicle || []).join(', '), images: initial.images || [] } : blank);
+  const blank = { name: '', brand: '', category: 'Tyres', subType: 'New', price: '', discountPercent: '0', stock: '', rating: '4.5', condition: 'New', description: '', image: '', images: [], vehicle: '' };
+  const [form, setForm] = useState(initial ? { ...initial, vehicle: (initial.vehicle || []).join(', '), images: initial.images || [], discountPercent: initial.discountPercent ?? '0' } : blank);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
 
   function set(key) { return v => setForm(p => ({ ...p, [key]: v })); }
 
-  async function handleFileUpload(e) {
-    const files = e.target.files;
-    if (!files.length) return;
-    setUploading(true); setError('');
-    const formData = new FormData();
-    for (let i = 0; i < files.length; i++) {
-      formData.append('images', files[i]);
+  async function uploadCompressedFiles(files) {
+    const remainingSlots = MAX_IMAGES - (form.images?.length || 0);
+    if (remainingSlots <= 0) {
+      setError(`Maximum ${MAX_IMAGES} images allowed.`);
+      return;
     }
+
+    const filesToUpload = Array.from(files).slice(0, remainingSlots);
+    if (filesToUpload.length === 0) return;
+
+    setUploading(true);
+    setError('');
+
     try {
+      const formData = new FormData();
+      for (const file of filesToUpload) {
+        const compressed = await compressImageFile(file);
+        formData.append('images', compressed);
+      }
+
       const res = await fetch(`${API}/api/upload`, { method: 'POST', body: formData });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Upload failed');
-      
-      setForm(p => {
-        const newImages = [...(p.images || []), ...data.urls];
-        return { ...p, images: newImages, image: newImages[0] };
+
+      setForm((current) => {
+        const newImages = [...(current.images || []), ...data.urls].slice(0, MAX_IMAGES);
+        return { ...current, images: newImages, image: newImages[0] || '' };
       });
     } catch (err) {
       setError('Image upload failed. Is backend running?');
@@ -60,11 +124,29 @@ const ProductModal = ({ initial, onClose, onSave }) => {
     }
   }
 
+  async function handleFileUpload(e) {
+    const files = e.target.files;
+    if (!files.length) return;
+    await uploadCompressedFiles(files);
+    e.target.value = '';
+  }
+
+  async function handlePhotosCapture(files) {
+    await uploadCompressedFiles(files);
+  }
+
 
   async function handleSave() {
     if (!form.name || !form.brand || !form.price) { setError('Name, brand, price required.'); return; }
     setLoading(true);
-    const payload = { ...form, price: parseFloat(form.price) || 0, stock: parseInt(form.stock) || 0, rating: parseFloat(form.rating) || 4.0, vehicle: form.vehicle.split(',').map(s => s.trim()).filter(Boolean) };
+    const payload = {
+      ...form,
+      price: parseFloat(form.price) || 0,
+      discountPercent: parseFloat(form.discountPercent) || 0,
+      stock: parseInt(form.stock) || 0,
+      rating: parseFloat(form.rating) || 4.0,
+      vehicle: form.vehicle.split(',').map(s => s.trim()).filter(Boolean),
+    };
     try {
       const url = initial ? `${API}/api/products/${initial.id}` : `${API}/api/products`;
       const method = initial ? 'PUT' : 'POST';
@@ -98,17 +180,26 @@ const ProductModal = ({ initial, onClose, onSave }) => {
           </Field>
           <Field label="Condition" value={form.condition} onChange={set('condition')} placeholder="e.g. New, Used - 90% Tread" />
           <Field label="Price (₹) *" value={form.price} onChange={set('price')} type="number" placeholder="e.g. 12500" />
+          <Field label="Discount %" value={form.discountPercent} onChange={set('discountPercent')} type="number" placeholder="0 to 90" />
           <Field label="Stock" value={form.stock} onChange={set('stock')} type="number" placeholder="e.g. 20" />
           <Field label="Rating (1-5)" value={form.rating} onChange={set('rating')} type="number" placeholder="4.5" />
           <div className="md:col-span-2 mt-4 pt-4 border-t border-white/5">
             <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-1.5 block">Product Photos (Multi-Select)</label>
+            <div className="flex flex-wrap gap-3 mb-3">
+              <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-white/10 bg-zinc-800/60 px-4 py-3 text-sm font-bold text-white hover:bg-white/5">
+                <Plus size={16} /> Upload Images
+                <input type="file" multiple accept="image/*" onChange={handleFileUpload} disabled={uploading} className="hidden" />
+              </label>
+              <button type="button" onClick={() => setCameraOpen(true)} className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-zinc-800/60 px-4 py-3 text-sm font-bold text-white hover:bg-white/5">
+                <Camera size={16} /> Take Photo
+              </button>
+            </div>
             <div className="bg-zinc-800 border border-dashed border-white/20 hover:border-rose-500/50 transition-colors rounded-2xl p-4 flex flex-col items-center justify-center relative cursor-pointer min-h-[120px]">
-              <input type="file" multiple accept="image/*" onChange={handleFileUpload} disabled={uploading} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" />
               {uploading ? (
                 <p className="text-sm font-bold text-rose-500 animate-pulse">Uploading files...</p>
               ) : (
                 <div className="text-center">
-                  <p className="text-sm font-bold text-white mb-1">Click or drag files here</p>
+                  <p className="text-sm font-bold text-white mb-1">Click Upload Images or Take Photo</p>
                   <p className="text-xs text-zinc-500">Supported: JPG, PNG, WEBP (Max 10 files)</p>
                 </div>
               )}
@@ -118,7 +209,7 @@ const ProductModal = ({ initial, onClose, onSave }) => {
               <div className="flex gap-4 mt-4 overflow-x-auto pb-2" style={{ scrollbarWidth: 'thin' }}>
                 {form.images.map((imgUrl, idx) => (
                   <div key={idx} className="relative w-24 h-24 bg-zinc-900 rounded-2xl flex-shrink-0 overflow-hidden border border-white/10 group">
-                    <img src={imgUrl} alt={`Preview ${idx+1}`} className="w-full h-full object-cover" onError={e => { e.target.src='https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=400'; }} />
+                    <img src={imgUrl} alt={`Preview ${idx+1}`} loading="lazy" decoding="async" className="w-full h-full object-cover" onError={e => { e.target.src='https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=400'; }} />
                     {idx === 0 && <span className="absolute top-1 left-1 bg-rose-600 px-1.5 py-0.5 rounded text-[8px] font-black uppercase">Cover</span>}
                     <button onClick={() => setForm(p => ({ ...p, images: p.images.filter((_, i) => i !== idx), image: idx === 0 ? p.images[1] || '' : p.image }))} className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-rose-500"><X size={20} /></button>
                   </div>
@@ -145,6 +236,13 @@ const ProductModal = ({ initial, onClose, onSave }) => {
             <Save size={16} />{loading ? 'Saving...' : initial ? 'Update Product' : 'Add Product'}
           </button>
         </div>
+
+        <CameraModal
+          isOpen={cameraOpen}
+          onClose={() => setCameraOpen(false)}
+          onPhotosCapture={handlePhotosCapture}
+          remainingSlots={MAX_IMAGES - (form.images?.length || 0)}
+        />
       </div>
     </div>
   );
@@ -152,12 +250,62 @@ const ProductModal = ({ initial, onClose, onSave }) => {
 
 // ─── Add / Edit Branch Modal ──────────────────────────────────────────────────
 const BranchModal = ({ initial, onClose, onSave }) => {
-  const blank = { name: '', address: '', phone: '', hours: '9 AM - 6 PM', mapLink: '' };
-  const [form, setForm] = useState(initial || blank);
+  const blank = { name: '', address: '', phone: '', hours: '9 AM - 6 PM', mapLink: '', images: [] };
+  const [form, setForm] = useState(initial ? { ...initial, images: initial.images || [] } : blank);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
 
   function set(key) { return v => setForm(p => ({ ...p, [key]: v })); }
+
+  async function uploadBranchImages(files) {
+    const remainingSlots = MAX_IMAGES - (form.images?.length || 0);
+    if (remainingSlots <= 0) {
+      setUploadError(`Maximum ${MAX_IMAGES} images allowed.`);
+      return;
+    }
+
+    const filesToUpload = Array.from(files).slice(0, remainingSlots);
+    if (filesToUpload.length === 0) return;
+
+    setUploading(true);
+    setUploadError('');
+
+    try {
+      const formData = new FormData();
+      for (const file of filesToUpload) {
+        formData.append('images', file);
+      }
+
+      const res = await fetch(`${API}/api/upload`, { method: 'POST', body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
+
+      setForm((current) => ({
+        ...current,
+        images: [...(current.images || []), ...data.urls].slice(0, MAX_IMAGES),
+      }));
+    } catch (err) {
+      setUploadError('Image upload failed. Please try again.');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleFileUpload(e) {
+    const files = e.target.files;
+    if (!files.length) return;
+    await uploadBranchImages(files);
+    e.target.value = '';
+  }
+
+  const handleRemoveImage = (index) => {
+    setForm((current) => ({
+      ...current,
+      images: (current.images || []).filter((_, i) => i !== index),
+    }));
+  };
 
   async function handleSave() {
     if (!form.name || !form.address || !form.phone) { setError('Name, address, phone required.'); return; }
@@ -165,7 +313,8 @@ const BranchModal = ({ initial, onClose, onSave }) => {
     try {
       const url = initial ? `${API}/api/branches/${initial.id}` : `${API}/api/branches`;
       const method = initial ? 'PUT' : 'POST';
-      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
+      const payload = { ...form };
+      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Save failed');
       onSave(data, !!initial);
@@ -187,6 +336,29 @@ const BranchModal = ({ initial, onClose, onSave }) => {
           <Field label="Phone *" value={form.phone} onChange={set('phone')} placeholder="+91 98765 43210" />
           <Field label="Opening Hours" value={form.hours} onChange={set('hours')} placeholder="9 AM - 9 PM" />
           <Field label="Google Maps Link" value={form.mapLink} onChange={set('mapLink')} placeholder="https://maps.google.com/..." />
+          <div>
+            <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-1.5 block">Branch Images</label>
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-black uppercase tracking-[0.2em] text-white transition hover:bg-white/10">
+                <Camera size={16} /> Upload Images
+                <input type="file" accept="image/*" multiple className="hidden" onChange={handleFileUpload} />
+              </label>
+              {uploading && <span className="text-sm text-rose-400">Uploading images...</span>}
+            </div>
+            {uploadError && <p className="mt-2 text-sm text-rose-400">{uploadError}</p>}
+            {form.images?.length > 0 && (
+              <div className="mt-4 grid grid-cols-3 gap-3">
+                {form.images.map((src, index) => (
+                  <div key={`${src}-${index}`} className="relative overflow-hidden rounded-2xl border border-white/10 bg-zinc-950">
+                    <img src={src} alt={`Branch ${index + 1}`} className="h-24 w-full object-cover" />
+                    <button type="button" onClick={() => handleRemoveImage(index)} className="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-black/70 text-white transition hover:bg-black">
+                      <X size={16} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
         {error && <p className="mt-4 text-red-400 text-xs font-bold px-4 py-2 bg-red-500/10 rounded-xl">{error}</p>}
         <div className="flex gap-3 mt-6">
@@ -203,7 +375,9 @@ const BranchModal = ({ initial, onClose, onSave }) => {
 
 // ─── Main Admin Panel ─────────────────────────────────────────────────────────
 export default function AdminPanel({ onLogout }) {
-  const [activeTab, setActiveTab] = useState('inventory');
+  const { logout } = useAuth();
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [products, setProducts] = useState([]);
   const [branches, setBranches] = useState([]);
   const [settings, setSettings] = useState(null);
@@ -224,6 +398,35 @@ export default function AdminPanel({ onLogout }) {
   const [deletingBranch, setDeletingBranch] = useState(null);
 
   useEffect(() => {
+    const unsubOrders = onSnapshot(collection(db, 'orders'), (snapshot) => {
+      const normalizedOrders = snapshot.docs
+        .map((doc) => ({ _id: doc.id, id: doc.id, ...doc.data() }))
+        .map((order) => {
+          const status = normalizeOrderStatus(order.orderStatus || order.order_status || order.status);
+          const total = Number(order.total ?? order.totalAmount ?? 0);
+
+          return {
+            ...order,
+            orderStatus: status,
+            status,
+            total,
+            totalAmount: Number(order.totalAmount ?? order.total ?? 0),
+            paymentMethod: order.paymentMethod || order.payment_method || 'Unknown',
+            createdAt: order.createdAt || order.created_at || order.timestamp || null,
+            timestamp: order.timestamp || order.createdAt || order.created_at || null,
+          };
+        })
+        .sort((left, right) => new Date(right.timestamp || right.createdAt || 0).getTime() - new Date(left.timestamp || left.createdAt || 0).getTime());
+
+      setOrders(normalizedOrders);
+      const confirmedOrders = normalizedOrders.filter((order) => normalizeOrderStatus(order.orderStatus) === 'confirmed');
+      setDashboardStats({
+        totalOrders: confirmedOrders.length,
+        pendingOrders: normalizedOrders.filter((order) => normalizeOrderStatus(order.orderStatus) === 'pending').length,
+        revenueToday: confirmedOrders.reduce((sum, order) => sum + Number(order.totalAmount ?? order.total ?? 0), 0),
+      });
+    });
+
     const fetchData = async () => {
       try {
         const token = localStorage.getItem('zt_token');
@@ -231,22 +434,17 @@ export default function AdminPanel({ onLogout }) {
           'Authorization': `Bearer ${token}` 
         };
         
-        const [prods, brans, sett, ords, usrs, dash] = await Promise.all([
+        const [prods, brans, sett, usrs] = await Promise.all([
           fetch(`${API}/api/products`).then(r => r.ok ? r.json() : null).catch(() => null),
           fetch(`${API}/api/branches`).then(r => r.ok ? r.json() : null).catch(() => null),
           fetch(`${API}/api/settings`).then(r => r.ok ? r.json() : null).catch(() => null),
-          fetch(`${API}/api/admin/orders`, { headers, credentials: 'include' }).then(r => r.ok ? r.json() : null).catch(() => null),
           fetch(`${API}/api/admin/users`, { headers, credentials: 'include' }).then(r => r.ok ? r.json() : null).catch(() => null),
-          fetch(`${API}/api/admin/dashboard`, { headers, credentials: 'include' }).then(r => r.ok ? r.json() : null).catch(() => null)
         ]);
         
         setProducts(Array.isArray(prods) ? prods : []); setLoadingProducts(false);
         setBranches(Array.isArray(brans) ? brans : []); setLoadingBranches(false);
         setSettings(sett || {});
-        
-        if (ords && Array.isArray(ords)) setOrders(ords); else setOrders([]);
         if (usrs && Array.isArray(usrs.users)) setUsers(usrs.users); else if (Array.isArray(usrs)) setUsers(usrs); else setUsers([]);
-        if (dash && !Array.isArray(dash)) setDashboardStats(dash);
       } catch (err) {
         setServerError(true);
         setLoadingProducts(false);
@@ -254,6 +452,8 @@ export default function AdminPanel({ onLogout }) {
       }
     };
     fetchData();
+
+    return () => unsubOrders();
   }, []);
 
   // Product handlers
@@ -304,7 +504,7 @@ export default function AdminPanel({ onLogout }) {
         }, 
         body: JSON.stringify({ status }) 
       });
-      setOrders(orders.map(o => o._id === id ? { ...o, orderStatus: status } : o));
+      setOrders(prev => prev.map(o => o._id === id ? { ...o, orderStatus: normalizeOrderStatus(status), status: normalizeOrderStatus(status) } : o));
     } catch { alert('Update failed'); }
   }
 
@@ -353,9 +553,9 @@ export default function AdminPanel({ onLogout }) {
   const totalStock = products.reduce((s, p) => s + (p.stock || 0), 0);
   const lowStock = products.filter(p => p.stock < 5).length;
   const stats = [
-    { label: 'Est. Revenue', value: dashboardStats ? `₹${(dashboardStats.revenueToday / 100000).toFixed(1)}L` : `₹${(totalRevenue / 100000).toFixed(1)}L`, icon: <DollarSign className="text-green-500" size={20} />, trend: 'Today', up: true },
+    { label: 'Est. Revenue', value: dashboardStats ? `₹${(dashboardStats.revenueToday / 100000).toFixed(1)}L` : `₹${(totalRevenue / 100000).toFixed(1)}L`, icon: <DollarSign className="text-green-500" size={20} />, trend: 'Confirmed', up: true },
     { label: 'Total Orders', value: dashboardStats ? dashboardStats.totalOrders : 0, icon: <Package className="text-blue-400" size={20} />, trend: `${dashboardStats?.pendingOrders || 0} Pending`, up: (dashboardStats?.pendingOrders || 0) === 0 },
-    { label: 'Active Users', value: dashboardStats ? dashboardStats.activeUsers : 0, icon: <Users className="text-purple-400" size={20} />, trend: 'Live', up: true },
+    { label: 'Active Users', value: users.length, icon: <Users className="text-purple-400" size={20} />, trend: 'Live', up: true },
     { label: 'Total Users', value: users.length, icon: <Globe className="text-orange-400" size={20} />, trend: 'Active', up: true },
   ];
 
@@ -373,8 +573,60 @@ export default function AdminPanel({ onLogout }) {
     { id: 'settings', label: 'Site Settings', icon: <Settings size={18} /> },
   ];
 
+  const handleLogout = onLogout || logout;
+
+  useEffect(() => {
+    const path = window.location.pathname.replace('/yehlepakadmerachoco', '').replace(/^\//, '');
+    if (path && navItems.some((item) => item.id === path)) {
+      setActiveTab(path);
+    } else {
+      setActiveTab('dashboard');
+    }
+  }, []);
+
   return (
-    <div className="min-h-screen bg-[#0A0A0B] text-white flex">
+    <div className="min-h-screen bg-[#0A0A0B] text-white md:flex">
+      {mobileMenuOpen && (
+        <div className="fixed inset-0 z-[55] bg-black/80 backdrop-blur-sm md:hidden">
+          <div className="absolute inset-x-4 top-4 rounded-[2rem] border border-white/10 bg-[#0D0D0E] p-4 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.35em] text-zinc-500">Admin Menu</p>
+                <p className="text-lg font-black italic uppercase tracking-tighter">Zains <span className="text-rose-500">Admin</span></p>
+              </div>
+              <button onClick={() => setMobileMenuOpen(false)} className="rounded-xl border border-white/10 bg-white/5 p-2 text-zinc-400">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="grid gap-2">
+              {navItems.map(item => (
+                <button
+                  key={item.id}
+                  onClick={() => { setActiveTab(item.id); setMobileMenuOpen(false); }}
+                  className={`flex min-h-[48px] items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-black uppercase tracking-[0.2em] transition-colors ${
+                    activeTab === item.id ? 'bg-rose-600 text-white' : 'bg-white/[0.03] text-zinc-300 hover:bg-white/[0.06]'
+                  }`}
+                >
+                  {item.icon}
+                  {item.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-4 grid gap-2">
+              <a href="/yehlepakadmerachoco" className="rounded-2xl border border-white/5 bg-white/[0.03] px-4 py-3 text-xs font-black uppercase tracking-widest text-zinc-300">Dashboard</a>
+              <a href="/yehlepakadmerachoco/inventory" className="rounded-2xl border border-white/5 bg-white/[0.03] px-4 py-3 text-xs font-black uppercase tracking-widest text-zinc-300">Inventory</a>
+              <a href="/yehlepakadmerachoco/branches" className="rounded-2xl border border-white/5 bg-white/[0.03] px-4 py-3 text-xs font-black uppercase tracking-widest text-zinc-300">Branches</a>
+            </div>
+
+            <button onClick={handleLogout} className="mt-4 flex w-full items-center justify-center gap-3 rounded-2xl border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-xs font-black uppercase tracking-widest text-rose-400">
+              <LogOut size={16} /> Sign Out
+            </button>
+          </div>
+        </div>
+      )}
+
       {selectedUser && (
         <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[60] p-4 lg:p-8">
           <div className="bg-zinc-900 border border-white/10 rounded-[2.5rem] w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
@@ -419,14 +671,15 @@ export default function AdminPanel({ onLogout }) {
                    <div className="flex-1 space-y-3">
                      {selectedUser.cart && selectedUser.cart.length > 0 ? (
                        selectedUser.cart.map((item, idx) => (
-                            <div className="w-10 h-10 bg-zinc-800 rounded-lg flex-shrink-0 overflow-hidden">
-                               <img src={item.productId?.image || 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=400'} className="w-full h-full object-cover" />
+                       <div key={idx} className="flex items-center gap-3 rounded-2xl border border-white/5 bg-white/[0.03] p-3">
+                         <div className="w-10 h-10 bg-zinc-800 rounded-lg flex-shrink-0 overflow-hidden">
+                           <img src={item.productId?.image || 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=400'} loading="lazy" decoding="async" className="w-full h-full object-cover" />
                             </div>
                             <div>
                                <p className="text-[10px] font-black text-white uppercase italic">{item.productId?.name || 'Unknown Product'}</p>
                                <p className="text-[10px] text-zinc-500 font-bold">Qty: {item.quantity} • ₹{(item.productId?.price || 0).toLocaleString()}</p>
                             </div>
-                         </div>
+                       </div>
                        ))
                      ) : (
                        <p className="text-xs text-zinc-600 font-bold italic py-4">No items in cart</p>
@@ -509,7 +762,15 @@ export default function AdminPanel({ onLogout }) {
       )}
 
       {/* ── Sidebar ─────────────────────────────────────────────────────── */}
-      <aside className="w-64 bg-zinc-900/80 backdrop-blur-xl border-r border-white/5 flex flex-col p-6 fixed h-full z-10">
+      <aside className="hidden w-64 bg-zinc-900/80 backdrop-blur-xl border-r border-white/5 flex-col p-6 fixed h-full z-10 md:flex">
+        <div className="flex items-center space-x-3 mb-4">
+          <a
+            href="/admin"
+            className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-zinc-300 transition-all hover:border-rose-500/20 hover:bg-rose-500/10 hover:text-white"
+          >
+            Open Old Admin
+          </a>
+        </div>
         <div className="flex items-center space-x-3 mb-10">
           <div className="w-10 h-10 bg-rose-600 rounded-xl flex items-center justify-center shadow-[0_0_20px_rgba(225,29,72,0.4)]">
             <Car size={20} className="text-white" />
@@ -530,6 +791,28 @@ export default function AdminPanel({ onLogout }) {
           ))}
         </nav>
 
+        <div className="mt-4 space-y-2 rounded-2xl border border-white/5 bg-white/[0.03] p-3">
+          <p className="px-1 text-[10px] font-black uppercase tracking-widest text-zinc-600">Quick Actions</p>
+          <a
+            href="/yehlepakadmerachoco"
+            className="block rounded-xl border border-white/5 bg-zinc-900/60 px-4 py-3 text-xs font-black uppercase tracking-widest text-zinc-300 transition-all hover:border-rose-500/20 hover:bg-rose-500/10 hover:text-white"
+          >
+            Dashboard
+          </a>
+          <a
+            href="/yehlepakadmerachoco/inventory"
+            className="block rounded-xl border border-white/5 bg-zinc-900/60 px-4 py-3 text-xs font-black uppercase tracking-widest text-zinc-300 transition-all hover:border-rose-500/20 hover:bg-rose-500/10 hover:text-white"
+          >
+            Inventory
+          </a>
+          <a
+            href="/yehlepakadmerachoco/branches"
+            className="block rounded-xl border border-white/5 bg-zinc-900/60 px-4 py-3 text-xs font-black uppercase tracking-widest text-zinc-300 transition-all hover:border-rose-500/20 hover:bg-rose-500/10 hover:text-white"
+          >
+            Branches
+          </a>
+        </div>
+
         {serverError && (
           <div className="my-4 px-4 py-3 bg-yellow-500/10 border border-yellow-500/20 rounded-xl text-yellow-400 text-[10px] font-black">
             ⚠️ Server offline
@@ -538,7 +821,7 @@ export default function AdminPanel({ onLogout }) {
 
         <div className="mt-auto pt-4 border-t border-white/5">
           <p className="text-[10px] text-zinc-600 font-black uppercase tracking-widest mb-3 px-2">Logged in as Owner</p>
-          <button onClick={onLogout}
+          <button onClick={handleLogout}
             className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-black text-rose-500 hover:bg-rose-500/10 transition-all">
             <LogOut size={18} /><span>Sign Out</span>
           </button>
@@ -546,12 +829,21 @@ export default function AdminPanel({ onLogout }) {
       </aside>
 
       {/* ── Main ────────────────────────────────────────────────────────── */}
-      <main className="flex-1 ml-64 p-10">
+      <main className="flex-1 p-4 pt-20 md:ml-64 md:p-10 md:pt-10">
+        <div className="mb-6 flex items-center justify-between rounded-[1.5rem] border border-white/5 bg-white/[0.03] px-4 py-3 md:hidden">
+          <div>
+            <p className="text-[9px] font-black uppercase tracking-[0.35em] text-zinc-500">Dashboard</p>
+            <h1 className="text-lg font-black italic uppercase tracking-tighter">Admin Panel</h1>
+          </div>
+          <button onClick={() => setMobileMenuOpen(true)} className="rounded-2xl border border-white/10 bg-white/5 p-3 text-zinc-300">
+            <Menu size={18} />
+          </button>
+        </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-10">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-10">
           {stats.map((s, i) => (
-            <div key={i} className="bg-zinc-900/60 border border-white/5 p-6 rounded-3xl">
+            <div key={i} className="bg-zinc-900/60 border border-white/5 p-5 rounded-3xl md:p-6">
               <div className="flex items-center justify-between mb-3">
                 <div className="p-2 bg-white/5 rounded-xl">{s.icon}</div>
                 <span className={`text-xs font-black ${s.up ? 'text-green-500' : 'text-red-400'}`}>{s.trend}</span>
@@ -565,15 +857,21 @@ export default function AdminPanel({ onLogout }) {
         {/* ── Inventory Tab ──────────────────────────────────────────────── */}
         {activeTab === 'inventory' && (
           <div className="bg-zinc-900/60 border border-white/5 rounded-3xl overflow-hidden">
-            <div className="p-7 border-b border-white/5 flex items-center justify-between gap-4">
+            <div className="flex flex-col gap-4 border-b border-white/5 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-7">
               <h2 className="text-2xl font-black italic uppercase tracking-tighter shrink-0">
                 Product <span className="text-rose-500">Inventory</span>
               </h2>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <a href="/yehlepakadmerachoco/branches" className="hidden sm:inline-flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-white px-5 py-2.5 rounded-xl text-xs font-black uppercase transition-all">
+                  <MapPin size={15} /> Branches
+                </a>
+                <a href="/yehlepakadmerachoco/inventory" className="hidden sm:inline-flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-white px-5 py-2.5 rounded-xl text-xs font-black uppercase transition-all">
+                  <Package size={15} /> Inventory
+                </a>
                 <div className="relative">
                   <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
                   <input value={searchProducts} onChange={e => setSearchProducts(e.target.value)} placeholder="Search..."
-                    className="bg-zinc-800 border border-white/10 rounded-xl pl-9 pr-4 py-2 text-xs text-white focus:outline-none focus:border-rose-500/50 w-48" />
+                    className="w-36 rounded-xl border border-white/10 bg-zinc-800 py-2 pl-9 pr-4 text-xs text-white focus:border-rose-500/50 focus:outline-none sm:w-48" />
                 </div>
                 <button onClick={() => setProductModal('add')}
                   className="flex items-center gap-2 bg-rose-600 hover:bg-rose-700 text-white px-5 py-2.5 rounded-xl text-xs font-black uppercase transition-all">
@@ -587,7 +885,7 @@ export default function AdminPanel({ onLogout }) {
             ) : filteredProducts.length === 0 ? (
               <div className="p-12 text-center text-zinc-600 font-black">{searchProducts ? 'No results.' : 'No products yet.'}</div>
             ) : (
-              <div className="overflow-x-auto">
+                <div className="overflow-x-auto md:overflow-visible">
                 <table className="w-full text-left">
                   <thead>
                     <tr className="text-zinc-600 text-[10px] font-black uppercase tracking-[0.2em] border-b border-white/5">
@@ -602,7 +900,7 @@ export default function AdminPanel({ onLogout }) {
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
                             <div className="w-10 h-10 bg-zinc-800 rounded-xl overflow-hidden shrink-0">
-                              {product.image ? <img src={product.image} alt="" className="w-full h-full object-cover" onError={e => { e.target.src='https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=400'; }} /> : <img src="https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=400" alt="" className="w-full h-full object-cover opacity-50 grayscale" />}
+                              {product.image ? <img src={product.image} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" onError={e => { e.target.src='https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=400'; }} /> : <img src="https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=400" alt="" loading="lazy" decoding="async" className="w-full h-full object-cover opacity-50 grayscale" />}
                             </div>
                             <div>
                               <p className="text-xs uppercase text-white group-hover:text-rose-400 transition-colors">{product.name}</p>
@@ -616,7 +914,16 @@ export default function AdminPanel({ onLogout }) {
                             {product.category} · {product.subType}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-rose-400 font-black">₹{(product.price || 0).toLocaleString()}</td>
+                        <td className="px-6 py-4 text-rose-400 font-black">
+                          {product.discountPercent > 0 ? (
+                            <div className="flex flex-col text-sm">
+                              <span>₹{(product.price || 0).toLocaleString()}</span>
+                              <span className="text-xs text-zinc-500 line-through">{`-${product.discountPercent}%`}</span>
+                            </div>
+                          ) : (
+                            `₹${(product.price || 0).toLocaleString()}`
+                          )}
+                        </td>
                         <td className="px-6 py-4">
                           <span className={`px-2.5 py-1 rounded-full text-[10px] font-black ${product.stock < 5 ? 'bg-red-500/10 text-red-400' : product.stock < 10 ? 'bg-yellow-500/10 text-yellow-400' : 'bg-green-500/10 text-green-400'}`}>
                             {product.stock}
@@ -642,7 +949,7 @@ export default function AdminPanel({ onLogout }) {
         {/* ── Branches Tab ───────────────────────────────────────────────── */}
         {activeTab === 'branches' && (
           <div>
-            <div className="flex items-center justify-between mb-6">
+            <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <h2 className="text-2xl font-black italic uppercase tracking-tighter">
                 Branch <span className="text-rose-500">Locations</span>
               </h2>
@@ -656,9 +963,9 @@ export default function AdminPanel({ onLogout }) {
             ) : branches.length === 0 ? (
               <div className="text-center text-zinc-600 font-black py-12">No branches yet. Add one!</div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 md:gap-6">
                 {branches.map(branch => (
-                  <div key={branch.id} className="bg-zinc-900/60 border border-white/5 hover:border-rose-500/20 rounded-3xl p-7 transition-all">
+                  <div key={branch.id} className="bg-zinc-900/60 border border-white/5 hover:border-rose-500/20 rounded-3xl p-5 transition-all md:p-7">
                     <div className="flex items-start justify-between mb-4">
                       <div className="w-12 h-12 bg-rose-600/10 rounded-2xl flex items-center justify-center">
                         <MapPin className="text-rose-500" size={22} />
@@ -690,7 +997,7 @@ export default function AdminPanel({ onLogout }) {
         {/* ── Settings Tab ───────────────────────────────────────────────── */}
         {activeTab === 'settings' && settings && (
           <div className="max-w-3xl">
-            <h2 className="text-2xl font-black italic uppercase tracking-tighter mb-8">
+            <h2 className="text-2xl font-black italic uppercase tracking-tighter mb-6 md:mb-8">
               Site <span className="text-rose-500">Settings</span>
             </h2>
             <div className="space-y-6">
@@ -741,7 +1048,7 @@ export default function AdminPanel({ onLogout }) {
 
         {/* ── Dashboard Tab ──────────────────────────────────────────────── */}
         {activeTab === 'dashboard' && (
-          <div className="bg-zinc-900/60 border border-white/5 rounded-3xl p-12 text-center">
+          <div className="bg-zinc-900/60 border border-white/5 rounded-3xl p-8 text-center md:p-12">
             <BarChart3 size={56} className="mx-auto mb-4 text-zinc-700" />
             <p className="font-black uppercase tracking-widest text-zinc-500 text-sm">Analytics Dashboard</p>
             <p className="text-zinc-700 text-xs mt-2 font-medium">Sales charts & detailed reports coming soon.</p>
@@ -751,7 +1058,7 @@ export default function AdminPanel({ onLogout }) {
         {/* ── Orders Tab ──────────────────────────────────────────────── */}
         {activeTab === 'orders' && (
           <div className="bg-zinc-900/60 border border-white/5 rounded-3xl overflow-hidden">
-            <div className="p-7 border-b border-white/5">
+            <div className="p-4 border-b border-white/5 md:p-7">
               <h2 className="text-2xl font-black italic uppercase tracking-tighter">
                 Customer <span className="text-rose-500">Orders</span>
               </h2>
@@ -759,7 +1066,7 @@ export default function AdminPanel({ onLogout }) {
             {orders.length === 0 ? (
               <div className="p-12 text-center text-zinc-600 font-black">No orders found.</div>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto md:overflow-visible">
                 <table className="w-full text-left text-sm font-bold">
                   <thead>
                     <tr className="text-zinc-600 text-[10px] font-black uppercase tracking-[0.2em] border-b border-white/5">
@@ -773,34 +1080,34 @@ export default function AdminPanel({ onLogout }) {
                   </thead>
                   <tbody>
                     {orders.map(order => (
-                      <tr key={order._id} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
-                        <td className="px-6 py-4 text-xs font-mono text-zinc-400">{order._id.substring(order._id.length - 8)}</td>
+                      <tr key={order._id || order.id} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                        <td className="px-6 py-4 text-xs font-mono text-zinc-400">{(order._id || order.id || '').toString().slice(-8)}</td>
                         <td className="px-6 py-4 text-white">
-                          {order.userId?.name || 'Unknown'}
+                          {order.customerName || order.userId?.name || 'Unknown'}
                           <p className="text-[10px] text-zinc-500 font-medium">{order.userId?.email}</p>
                         </td>
-                        <td className="px-6 py-4 text-rose-400">₹{(order.total || 0).toLocaleString()}</td>
-                        <td className="px-6 py-4"><span className="px-2.5 py-1 bg-white/5 rounded-full text-xs">{order.paymentMethod}</span></td>
+                        <td className="px-6 py-4 text-rose-400">₹{Number(order.total ?? order.totalAmount ?? 0).toLocaleString()}</td>
+                        <td className="px-6 py-4"><span className="px-2.5 py-1 bg-white/5 rounded-full text-xs">{order.paymentMethod || order.payment_method || 'Unknown'}</span></td>
                         <td className="px-6 py-4">
-                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-black
-                            ${order.orderStatus === 'Pending' ? 'bg-amber-500/10 text-amber-500' :
-                              order.orderStatus === 'Delivered' ? 'bg-green-500/10 text-green-500' :
-                              order.orderStatus === 'Cancelled' ? 'bg-red-500/10 text-red-500' : 'bg-blue-500/10 text-blue-500'}`}>
-                            {order.orderStatus}
+                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-black ${
+                            normalizeOrderStatus(order.orderStatus) === 'confirmed'
+                              ? 'bg-blue-500/10 text-blue-500'
+                              : normalizeOrderStatus(order.orderStatus) === 'dispatched'
+                                ? 'bg-green-500/10 text-green-500'
+                                : 'bg-amber-500/10 text-amber-500'
+                          }`}>
+                            {formatOrderStatus(order.orderStatus)}
                           </span>
                         </td>
                         <td className="px-6 py-4 text-right">
                            <select 
-                             value={order.orderStatus} 
-                             onChange={(e) => updateOrderStatus(order._id, e.target.value)}
+                             value={normalizeOrderStatus(order.orderStatus || order.order_status || 'pending')} 
+                             onChange={(e) => updateOrderStatus(order._id || order.id, e.target.value)}
                              className="bg-zinc-800 border border-white/10 rounded-lg px-2 py-1 text-xs text-white focus:outline-none"
                            >
-                              <option>Pending</option>
-                              <option>Processing</option>
-                              <option>Shipped</option>
-                              <option>Out for Delivery</option>
-                              <option>Delivered</option>
-                              <option>Cancelled</option>
+                              <option value="pending">Pending</option>
+                              <option value="confirmed">Confirmed</option>
+                              <option value="dispatched">Dispatched</option>
                            </select>
                         </td>
                       </tr>

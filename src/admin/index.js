@@ -1,0 +1,10 @@
+export { default as AdminRoute } from "./AdminRoute";
+export { default as NewAdminLayout } from "./NewAdminLayout";
+export { default as NewAdminDashboard } from "./NewAdminDashboard";
+export { default as NewAdminInventory } from "./NewAdminInventory";
+export { default as NewAdminTyreForm } from "./NewAdminTyreForm";
+export { default as NewAdminOrders } from "./NewAdminOrders";
+export { default as NewAdminUsers } from "./NewAdminUsers";
+export { default as NewAdminBranches } from "./NewAdminBranches";
+export { default as NewAdminReviews } from "./NewAdminReviews";
+export { default as NewAdminSettings } from "./NewAdminSettings";

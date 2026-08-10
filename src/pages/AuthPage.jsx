@@ -63,7 +63,7 @@ const AuthPage = () => {
       if (data.success) {
         login(data.user);
         toast.success(isLogin ? 'Welcome back!' : 'Account created successfully!');
-        navigate(data.user.role === 'admin' ? '/admin' : '/dashboard');
+        navigate(data.user.role === 'admin' ? '/admin' : '/');
       } else {
         toast.error(data.message || (data.errors && data.errors[0].msg) || 'Authentication failed');
       }

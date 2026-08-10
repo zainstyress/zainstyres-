@@ -10,26 +10,25 @@ import type { NextRequest } from 'next/server';
 export default auth((req) => {
   const { pathname } = req.nextUrl;
   const session = req.auth;
+  const adminCookie = req.cookies.get('admin_session')?.value === 'true';
 
-  // Protected routes that require login
-  const protectedPaths = ['/checkout', '/track-order', '/admin', '/order-confirmation'];
+  // 1. Admin routes logic
+  if (pathname.startsWith('/admin')) {
+    const isAdmin = (session?.user as any)?.role === 'admin' || adminCookie;
+    if (!isAdmin) {
+      return NextResponse.redirect(new URL('/khelgavalo', req.url));
+    }
+    return NextResponse.next();
+  }
+
+  // 2. Protected customer routes logic
+  const protectedPaths = ['/checkout', '/track-order', '/order-confirmation'];
   const isProtected = protectedPaths.some((p) => pathname.startsWith(p));
 
   if (isProtected && !session) {
     const loginUrl = new URL('/login', req.url);
     loginUrl.searchParams.set('callbackUrl', pathname);
     return NextResponse.redirect(loginUrl);
-  }
-
-  // Admin routes require admin role
-  if (pathname.startsWith('/admin')) {
-    const role = (session?.user as any)?.role;
-    if (role !== 'admin') {
-      return new NextResponse(
-        JSON.stringify({ error: 'Forbidden: Admin access required' }),
-        { status: 403, headers: { 'content-type': 'application/json' } }
-      );
-    }
   }
 
   return NextResponse.next();

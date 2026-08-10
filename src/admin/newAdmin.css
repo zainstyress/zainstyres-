@@ -1,0 +1,94 @@
+.za-admin { min-height: 100vh; background: #050505; color: #fff; display: flex; }
+.za-sidebar { width: 280px; background: #0d0d0d; border-right: 1px solid rgba(255,255,255,.1); padding: 20px; position: sticky; top: 0; height: 100vh; }
+.za-brand { display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px; }
+.za-brand button { display: none; }
+.za-sidebar nav { display: grid; gap: 6px; }
+.za-sidebar a, .za-quick button, .za-signout { min-height: 48px; color: rgba(255,255,255,.72); background: transparent; border: 0; text-align: left; padding: 13px 14px; text-decoration: none; border-radius: 8px; font-size: 16px; }
+.za-sidebar a.active, .za-sidebar a:hover, .za-quick button:hover { color: #fff; background: rgba(220,38,38,.18); }
+.za-quick { display: grid; gap: 8px; margin-top: 30px; }
+.za-signout { width: 100%; margin-top: 20px; color: #ff6b6b; }
+.za-main { flex: 1; padding: 28px; min-width: 0; }
+.za-menu { display: none; position: fixed; z-index: 40; top: 12px; left: 12px; background: #161616; color: #fff; border: 1px solid rgba(255,255,255,.15); min-height: 48px; min-width: 48px; }
+.za-backdrop { display: none; }
+.za-header { display: flex; justify-content: space-between; gap: 16px; align-items: center; margin-bottom: 18px; }
+.za-header div { display: flex; gap: 10px; flex-wrap: wrap; }
+.za-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.za-stats article, .za-branch-grid article { background: #111; border: 1px solid rgba(255,255,255,.1); border-radius: 8px; padding: 18px; }
+.za-stats span, .za-stats small { color: rgba(255,255,255,.62); display: block; }
+.za-stats strong { display: block; font-size: 30px; margin: 8px 0; }
+.za-table { width: 100%; border-collapse: collapse; background: #0d0d0d; border: 1px solid rgba(255,255,255,.1); }
+.za-table th, .za-table td { padding: 12px; border-bottom: 1px solid rgba(255,255,255,.08); text-align: left; vertical-align: top; }
+.za-product { display: flex; gap: 10px; align-items: center; }
+.za-product img, .za-product i, .za-mobile-list img, .za-mobile-list i { width: 48px; height: 48px; border-radius: 6px; object-fit: cover; background: #242424; display: inline-block; }
+.za-search { position: relative; display: block; max-width: 460px; margin-bottom: 16px; }
+.za-search button { position: absolute; right: 8px; top: 8px; }
+.za-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+button, input, select, textarea { font-size: 16px; }
+button { cursor: pointer; }
+.za-admin input, .za-admin select, .za-admin textarea { background: #111; color: #fff; border: 1px solid rgba(255,255,255,.14); border-radius: 8px; padding: 12px; }
+.za-admin button { background: #181818; color: #fff; border: 1px solid rgba(255,255,255,.14); border-radius: 8px; padding: 11px 14px; }
+.za-admin button[type="submit"], .za-header button:last-child { background: #dc2626; border-color: #dc2626; }
+.za-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; padding-bottom: 80px; }
+.za-form h1, .za-form textarea, .za-form .za-image-grid, .za-form .za-form-actions, .za-form p { grid-column: 1 / -1; }
+.za-form textarea { min-height: 120px; }
+.za-upload input { display: block; margin-top: 8px; }
+.za-image-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.za-image-grid img, .za-image-grid span { aspect-ratio: 1; width: 100%; object-fit: cover; background: #151515; border: 1px solid rgba(255,255,255,.1); border-radius: 8px; padding: 8px; }
+.za-form-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.za-mobile-list { display: none; }
+.za-modal { position: fixed; inset: 0; background: rgba(0,0,0,.72); display: grid; place-items: center; z-index: 60; }
+.za-modal > div { width: min(460px, 92vw); background: #111; border: 1px solid rgba(255,255,255,.12); border-radius: 10px; padding: 22px; }
+.za-branch-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.za-branch-grid article { display: grid; gap: 10px; }
+.za-detail pre, .za-table pre { white-space: pre-wrap; color: rgba(255,255,255,.75); }
+.za-admin-loading { min-height: 100vh; display: grid; place-items: center; background: #050505; color: #fff; }
+.branch-photo-manager { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 20px; background: rgba(0,0,0,.72); }
+.branch-photo-manager__panel { width: min(600px, 100%); max-height: min(86vh, 900px); overflow: auto; background: #101010; color: #fff; border: 1px solid rgba(255,255,255,.14); border-radius: 12px; padding: 18px; }
+.branch-photo-manager__header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 16px; }
+.branch-photo-manager__header h2 { margin: 0 0 4px; }
+.branch-photo-manager__header p { margin: 0; color: rgba(255,255,255,.62); }
+.branch-photo-manager h3 { margin: 18px 0 10px; }
+.branch-photo-manager__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.branch-photo-manager__grid article { position: relative; aspect-ratio: 1; overflow: hidden; border-radius: 8px; border: 1px solid rgba(255,255,255,.12); background: #181818; }
+.branch-photo-manager__grid article.is-main { border-color: #f5c542; box-shadow: 0 0 0 2px rgba(245,197,66,.28); }
+.branch-photo-manager__grid img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.branch-photo-manager__star, .branch-photo-manager__delete { position: absolute; min-width: 36px; min-height: 36px; padding: 0; display: grid; place-items: center; background: rgba(0,0,0,.72); }
+.branch-photo-manager__star { left: 6px; top: 6px; color: #f5c542; }
+.branch-photo-manager__delete { right: 6px; top: 6px; color: #fff; }
+.branch-photo-manager__actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.branch-photo-manager__placeholder { min-height: 140px; display: grid; place-items: center; border: 1px dashed rgba(255,255,255,.16); border-radius: 8px; color: rgba(255,255,255,.62); }
+.branch-photo-manager__progress { position: absolute; left: 8px; right: 8px; bottom: 8px; height: 6px; border-radius: 999px; background: rgba(255,255,255,.22); overflow: hidden; }
+.branch-photo-manager__progress span { display: block; height: 100%; background: #dc2626; }
+.branch-photo-gallery { display: grid; gap: 10px; }
+.branch-photo-gallery__main, .branch-photo-gallery__placeholder { width: 100%; aspect-ratio: 16 / 10; border-radius: 8px; object-fit: cover; background: #181818; }
+.branch-photo-gallery__placeholder { display: grid; place-items: center; color: rgba(255,255,255,.62); }
+.branch-photo-gallery__thumbs { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.branch-photo-gallery__thumbs button { aspect-ratio: 1; padding: 0; overflow: hidden; border: 1px solid rgba(255,255,255,.14); background: transparent; border-radius: 6px; }
+.branch-photo-gallery__thumbs button.active { border-color: #dc2626; }
+.branch-photo-gallery__thumbs img { width: 100%; height: 100%; object-fit: cover; display: block; }
+@media (max-width: 760px) {
+  .za-admin { display: block; }
+  .za-menu { display: block; }
+  .za-main { padding: 76px 14px 24px; }
+  .za-sidebar { position: fixed; z-index: 50; inset: 0 auto 0 0; transform: translateX(-100%); transition: transform .2s ease; width: min(320px, 86vw); }
+  .za-sidebar.open { transform: translateX(0); }
+  .za-brand button { display: inline-flex; }
+  .za-backdrop.open { display: block; position: fixed; inset: 0; z-index: 45; background: rgba(0,0,0,.65); }
+  .za-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .za-table { display: none; }
+  .za-mobile-list { display: grid; gap: 12px; }
+  .za-mobile-list article { display: grid; grid-template-columns: 64px 1fr auto auto; gap: 10px; align-items: center; background: #111; border: 1px solid rgba(255,255,255,.1); border-radius: 8px; padding: 12px; }
+  .za-mobile-list img, .za-mobile-list i { width: 64px; height: 64px; }
+  .za-form, .za-branch-grid { grid-template-columns: 1fr; }
+  .za-image-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .za-form-actions { position: fixed; left: 0; right: 0; bottom: 0; padding: 12px; background: #050505; border-top: 1px solid rgba(255,255,255,.1); }
+  .za-form-actions button { flex: 1; min-height: 48px; }
+  .za-modal { place-items: stretch; }
+  .za-modal > div { width: 100vw; min-height: 100vh; border-radius: 0; }
+  .branch-photo-manager { padding: 0; place-items: stretch; }
+  .branch-photo-manager__panel { width: 100vw; max-height: none; min-height: 100vh; border-radius: 0; }
+  .branch-photo-manager__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .branch-photo-manager__actions { grid-template-columns: 1fr; }
+  .branch-photo-manager__actions button { width: 100%; min-height: 48px; }
+  .branch-photo-gallery__thumbs { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
