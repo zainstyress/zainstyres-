@@ -5,6 +5,7 @@ import { calculateTyrePricing } from '../lib/tyres';
 import TyreCard from '../components/tyres/TyreCard';
 import FilterSidebar from '../components/tyres/FilterSidebar';
 
+const API = import.meta.env.VITE_API_URL || '';
 const initialFilters = {
   category: 'all',
   brand: 'all',
@@ -28,7 +29,7 @@ export default function TyresShop() {
     setError(null);
 
     try {
-      const response = await fetch('/api/products');
+     const response = await fetch(`${API}/api/products`);
       const data = await response.json();
 
       if (!response.ok) {
