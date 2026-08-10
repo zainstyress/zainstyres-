@@ -9,7 +9,7 @@ import { useAuth } from '../context/AuthContext';
 import CameraModal from './CameraModal';
 import { db } from '../firebase';
 
-const API = ''; // Proxy-aware API URL
+const API = import.meta.env.VITE_API_URL || '';
 
 const MAX_IMAGES = 10;
 
