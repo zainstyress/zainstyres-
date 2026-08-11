@@ -64,18 +64,8 @@ app.use('/api/admin', require('./routes/admin'));
 app.use('/api/tracking', require('./routes/tracking'));
 app.use('/api/search', require('./routes/search'));
 
-// ─── File Upload (Local Server Storage) ──────────────────────────────────────
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, uploadsDir);
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    // Sanitize filename to avoid weird characters
-    const cleanName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
-    cb(null, uniqueSuffix + '-' + cleanName);
-  }
-});
+// ─── File Upload (Firebase Storage - persistent, survives restarts/redeploys) ──
+const storage = multer.memoryStorage();
 
 const upload = multer({ 
   storage: storage,
@@ -86,17 +76,23 @@ app.post('/api/upload', upload.array('images', 10), async (req, res) => {
   if (!req.files || req.files.length === 0) {
     return res.status(400).json({ error: 'No files uploaded.' });
   }
-  
-  try {
-    // Return the relative URLs for the uploaded files
-    const urls = req.files.map(file => {
-      // Create a URL that points to the static /uploads route
-      // In development, this will be relative and the frontend Vite proxy will route it.
-      // E.g., /uploads/1623456789-image.jpg
-      return `/uploads/${file.filename}`;
-    });
 
-    console.log('[Upload] Files saved locally:', urls);
+  try {
+    const urls = await Promise.all(req.files.map(async (file) => {
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+      const cleanName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
+      const destination = `uploads/${uniqueSuffix}-${cleanName}`;
+
+      const blob = bucket.file(destination);
+      await blob.save(file.buffer, {
+        metadata: { contentType: file.mimetype },
+      });
+      await blob.makePublic();
+
+      return `https://storage.googleapis.com/${bucket.name}/${destination}`;
+    }));
+
+    console.log('[Upload] Files saved to Firebase Storage:', urls);
     res.json({ urls });
   } catch (err) {
     console.error('[Upload] Error:', err);
