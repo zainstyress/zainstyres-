@@ -7,10 +7,11 @@ import { useCustomToast } from '../../context/ToastContext';
 import { calculateTyrePricing } from '../../lib/tyres';
 
 export default function TyreCard({ tyre }) {
-  const mainImage = tyre.images?.[tyre.thumbnailIndex || 0] || tyre.images?.[0] || 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=800';
+  const { user, API } = useAuth();
+  const rawImage = tyre.images?.[tyre.thumbnailIndex || 0] || tyre.images?.[0] || tyre.image;
+  const mainImage = rawImage || 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=800';
   const pricing = calculateTyrePricing(tyre);
   const navigate = useNavigate();
-  const { user, API } = useAuth();
   const { toast } = useCustomToast();
   const whatsappNumber = '917006628255';
 
