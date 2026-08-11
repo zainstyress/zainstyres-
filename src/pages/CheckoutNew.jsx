@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
-const API = import.meta.env.VITE_API_URL || "";
 import { Link, useNavigate } from "react-router-dom";
+
+const API = import.meta.env.VITE_API_URL || "";
 
 const STATES = [
   "Maharashtra",
@@ -196,7 +197,7 @@ export default function CheckoutNew({ cart: initialCart = [] }) {
     };
 
     try {
-     const response = await fetch(`${API}/api/orders/confirm`, {
+      const response = await fetch(`${API}/api/orders/confirm`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(confirmationPayload),

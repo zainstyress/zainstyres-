@@ -118,7 +118,7 @@ export default function AdminDashboard() {
   const loadOrders = useCallback(async ({ announceNewIds = [] } = {}) => {
     setLoading(true);
     try {
-     const response = await fetch(`${API}/api/admin/orders`, { credentials: 'include' });
+      const response = await fetch(`${API}/api/admin/orders`, { credentials: 'include' });
       const data = await response.json();
 
       if (!response.ok || !data.success) {
