@@ -64,7 +64,14 @@ app.use('/api/admin', require('./routes/admin'));
 app.use('/api/tracking', require('./routes/tracking'));
 app.use('/api/search', require('./routes/search'));
 
-// ─── File Upload (Firebase Storage - persistent, survives restarts/redeploys) ──
+// ─── File Upload (Cloudinary - persistent, free tier, no billing account needed) ──
+const cloudinary = require('cloudinary').v2;
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
 const storage = multer.memoryStorage();
 
 const upload = multer({ 
@@ -72,31 +79,32 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 }
 });
 
+function uploadBufferToCloudinary(buffer) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      { folder: 'uploads', resource_type: 'image' },
+      (error, result) => {
+        if (error) return reject(error);
+        resolve(result.secure_url);
+      }
+    );
+    stream.end(buffer);
+  });
+}
+
 app.post('/api/upload', upload.array('images', 10), async (req, res) => {
   if (!req.files || req.files.length === 0) {
     return res.status(400).json({ error: 'No files uploaded.' });
   }
 
+  if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+    return res.status(500).json({ error: 'Cloudinary is not configured. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET.' });
+  }
+
   try {
-    const urls = await Promise.all(req.files.map(async (file) => {
-      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-      const cleanName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
-      const destination = `uploads/${uniqueSuffix}-${cleanName}`;
-      const downloadToken = require('crypto').randomUUID();
+    const urls = await Promise.all(req.files.map((file) => uploadBufferToCloudinary(file.buffer)));
 
-      const blob = bucket.file(destination);
-      await blob.save(file.buffer, {
-        metadata: {
-          contentType: file.mimetype,
-          metadata: { firebaseStorageDownloadTokens: downloadToken },
-        },
-      });
-
-      const encodedPath = encodeURIComponent(destination);
-      return `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodedPath}?alt=media&token=${downloadToken}`;
-    }));
-
-    console.log('[Upload] Files saved to Firebase Storage:', urls);
+    console.log('[Upload] Files saved to Cloudinary:', urls);
     res.json({ urls });
   } catch (err) {
     console.error('[Upload] Error:', err);
