@@ -186,6 +186,7 @@ export default function CheckoutNew({ cart: initialCart = [] }) {
         pincode: formData.pin.trim(),
       },
       items: cart.map((item) => ({
+        productId: item.id,
         productName: item.name,
         price: Number(item.price || 0),
         quantity: Number(item.qty || 1),
