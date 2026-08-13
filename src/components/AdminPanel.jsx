@@ -121,7 +121,7 @@ const ProductModal = ({ initial, onClose, onSave }) => {
         return { ...current, images: newImages, image: newImages[0] || '' };
       });
     } catch (err) {
-      setError('Image upload failed. Is backend running?');
+      setError(`Image upload failed: ${err.message || 'Unknown error'}`);
     } finally {
       setUploading(false);
     }
@@ -292,7 +292,7 @@ const BranchModal = ({ initial, onClose, onSave }) => {
         images: [...(current.images || []), ...resolvedUrls].slice(0, MAX_IMAGES),
       }));
     } catch (err) {
-      setUploadError('Image upload failed. Please try again.');
+      setUploadError(`Image upload failed: ${err.message || 'Unknown error'}`);
     } finally {
       setUploading(false);
     }
