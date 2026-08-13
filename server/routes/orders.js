@@ -63,6 +63,7 @@ function normalizeIncomingOrder(body) {
       pincode: address.pincode || address.pin || body.pincode || body.pin || '',
     },
     items: items.map((item) => ({
+      productId: item.productId || item.id || item.product_id || '',
       productName: item.productName || item.name || '',
       quantity: Number(item.quantity ?? item.qty ?? 1),
       price: Number(item.price ?? 0),
@@ -292,6 +293,24 @@ router.post('/confirm', async (req, res) => {
 
     await db.collection('orders').doc(orderId).set(orderData);
 
+    // Decrement stock for each ordered item (best-effort, doesn't fail the order if it errors)
+    await Promise.all(payload.items.map(async (item) => {
+      if (!item.productId || !item.quantity) return;
+      try {
+        const productRef = db.collection('products').doc(item.productId);
+        await db.runTransaction(async (tx) => {
+          const snap = await tx.get(productRef);
+          if (!snap.exists) return;
+          const currentStock = Number(snap.data().stock || 0);
+          const currentSales = Number(snap.data().sales || 0);
+          const newStock = Math.max(0, currentStock - item.quantity);
+          tx.update(productRef, { stock: newStock, sales: currentSales + item.quantity });
+        });
+      } catch (stockErr) {
+        console.error(`[Stock] Failed to decrement stock for product ${item.productId}:`, stockErr.message);
+      }
+    }));
+
     const io = req.app.get('io');
     if (io) {
       io.emit('new-order', {
@@ -336,4 +355,3 @@ router.get('/myorders', protect, async (req, res) => {
 });
 
 module.exports = router;
-
