@@ -9,11 +9,25 @@ const Khelgavalo = () => {
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [hostMismatch, setHostMismatch] = useState(false);
   const navigate = useNavigate();
   const { API, checkAuth } = useAuth();
   const { toast } = useCustomToast();
 
+  const clearStaleAuth = () => {
+    document.cookie = 'token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Lax';
+    localStorage.removeItem('zt_token');
+  };
+
   useEffect(() => {
+    const hostname = window.location.hostname;
+    const isLocalHost = ['localhost', '127.0.0.1', '::1'].includes(hostname);
+    if (!isLocalHost) {
+      setHostMismatch(true);
+      clearStaleAuth();
+      return;
+    }
+
     const redirectIfAdmin = async () => {
       try {
         const user = await checkAuth();
@@ -27,6 +41,12 @@ const Khelgavalo = () => {
 
     redirectIfAdmin();
   }, [checkAuth, navigate]);
+
+  const openLocalAdmin = () => {
+    clearStaleAuth();
+    const target = 'http://127.0.0.1:5173/khelgavalo';
+    window.location.href = target;
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -69,6 +89,20 @@ const Khelgavalo = () => {
         animate={{ opacity: 1, y: 0 }}
         className="relative z-10 w-full max-w-md px-6"
       >
+        {hostMismatch && (
+          <div className="mb-5 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
+            <div className="font-bold uppercase tracking-[0.2em] text-amber-300">Host mismatch</div>
+            <p className="mt-2 leading-6">This admin login must run on the local app host so the auth cookie is accepted. Use the localhost admin URL.</p>
+            <button
+              type="button"
+              onClick={openLocalAdmin}
+              className="mt-3 inline-flex items-center rounded-xl bg-rose-600 px-4 py-2 text-xs font-black uppercase tracking-[0.2em] text-white transition hover:bg-rose-500"
+            >
+              Open Local Admin
+            </button>
+          </div>
+        )}
+
         <div className="bg-zinc-900/50 backdrop-blur-3xl rounded-[3rem] p-10 border border-white/5 shadow-[0_0_100px_rgba(0,0,0,1)]">
           <div className="text-center mb-10">
             <div className="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-rose-600 mb-6 text-white shadow-[0_0_30px_rgba(225,29,72,0.3)]">
