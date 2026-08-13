@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { collection, onSnapshot } from 'firebase/firestore';
 import {
   Plus, Trash2, Package, DollarSign, BarChart3, Users, LogOut,
@@ -376,12 +377,14 @@ const BranchModal = ({ initial, onClose, onSave }) => {
 // ─── Main Admin Panel ─────────────────────────────────────────────────────────
 export default function AdminPanel({ onLogout }) {
   const { logout } = useAuth();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [products, setProducts] = useState([]);
   const [branches, setBranches] = useState([]);
   const [settings, setSettings] = useState(null);
   const [settingsSaved, setSettingsSaved] = useState(false);
+  const [maintenanceStatus, setMaintenanceStatus] = useState({ maintenanceMode: false, loading: true });
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [loadingBranches, setLoadingBranches] = useState(true);
   const [serverError, setServerError] = useState(false);
@@ -398,6 +401,27 @@ export default function AdminPanel({ onLogout }) {
   const [deletingBranch, setDeletingBranch] = useState(null);
 
   useEffect(() => {
+    const fetchMaintenanceStatus = async () => {
+      try {
+        const token = localStorage.getItem('zt_token');
+        const res = await fetch(`${API}/api/admin/settings/maintenance`, {
+          method: 'GET',
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          credentials: 'include',
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data && typeof data.maintenanceMode === 'boolean') {
+          setMaintenanceStatus({ maintenanceMode: data.maintenanceMode, loading: false });
+          return;
+        }
+      } catch (error) {
+        console.warn('Failed to fetch maintenance status', error);
+      }
+      setMaintenanceStatus((current) => ({ ...current, loading: false }));
+    };
+
+    fetchMaintenanceStatus();
+
     const unsubOrders = onSnapshot(collection(db, 'orders'), (snapshot) => {
       const normalizedOrders = snapshot.docs
         .map((doc) => ({ _id: doc.id, id: doc.id, ...doc.data() }))
@@ -430,10 +454,8 @@ export default function AdminPanel({ onLogout }) {
     const fetchData = async () => {
       try {
         const token = localStorage.getItem('zt_token');
-        const headers = { 
-          'Authorization': `Bearer ${token}` 
-        };
-        
+        const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
         const [prods, brans, sett, usrs] = await Promise.all([
           fetch(`${API}/api/products`).then(r => r.ok ? r.json() : null).catch(() => null),
           fetch(`${API}/api/branches`).then(r => r.ok ? r.json() : null).catch(() => null),
@@ -493,16 +515,48 @@ export default function AdminPanel({ onLogout }) {
     } catch { alert('Settings save failed.'); }
   }
 
+  async function handleMaintenanceToggle(nextValue) {
+    const confirmed = window.confirm(nextValue ? 'Enable maintenance mode for the storefront?' : 'Disable maintenance mode and reopen the storefront?');
+    if (!confirmed) return;
+
+    try {
+        const token = localStorage.getItem('zt_token');
+        const res = await fetch(`${API}/api/admin/settings/maintenance`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        credentials: 'include',
+        body: JSON.stringify({ maintenanceMode: nextValue }),
+      });
+        if (res.status === 401) {
+          // Not authenticated — redirect admin to the admin login gate
+          window.alert('Please sign in as admin to change maintenance mode.');
+          navigate('/khelgavalo');
+          return;
+        }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Failed to update maintenance mode');
+      setMaintenanceStatus({ maintenanceMode: Boolean(data.maintenanceMode), loading: false });
+      alert(nextValue ? 'Maintenance mode enabled.' : 'Maintenance mode disabled.');
+    } catch (error) {
+      alert(error.message || 'Failed to update maintenance mode');
+    }
+  }
+
   // Order Status handler
   async function updateOrderStatus(id, status) {
     try {
-      await fetch(`${API}/api/admin/orders/${id}/status`, { 
-        method: 'PUT', 
+      const token = localStorage.getItem('zt_token');
+      await fetch(`${API}/api/admin/orders/${id}/status`, {
+        method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('zt_token')}`
-        }, 
-        body: JSON.stringify({ status }) 
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        credentials: 'include',
+        body: JSON.stringify({ status })
       });
       setOrders(prev => prev.map(o => o._id === id ? { ...o, orderStatus: normalizeOrderStatus(status), status: normalizeOrderStatus(status) } : o));
     } catch { alert('Update failed'); }
@@ -511,9 +565,10 @@ export default function AdminPanel({ onLogout }) {
   // User Actions
   async function handleUserToggleBlock(id) {
     try {
+      const token = localStorage.getItem('zt_token');
       const res = await fetch(`${API}/api/admin/users/${id}/toggle-block`, {
         method: 'PATCH',
-        headers: { Authorization: `Bearer ${localStorage.getItem('zt_token')}` },
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
         credentials: 'include'
       });
       const data = await res.json();
@@ -530,9 +585,10 @@ export default function AdminPanel({ onLogout }) {
   async function handleUserDelete(id) {
     if (!window.confirm('Are you sure you want to delete this user? This action is permanent.')) return;
     try {
+      const token = localStorage.getItem('zt_token');
       const res = await fetch(`${API}/api/admin/users/${id}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${localStorage.getItem('zt_token')}` },
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
         credentials: 'include'
       });
       if (res.ok) {
@@ -1018,6 +1074,30 @@ export default function AdminPanel({ onLogout }) {
                 </div>
               </div>
 
+              {/* Section: Store Status */}
+              <div className="bg-zinc-900/60 border border-white/5 rounded-3xl p-7">
+                <h3 className="text-xs font-black uppercase tracking-widest text-zinc-500 mb-5">⚙️ Store Status</h3>
+                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="text-sm font-black uppercase tracking-[0.2em] text-white">Maintenance Mode</p>
+                    <p className="mt-1 text-xs text-zinc-400">Block the public storefront while keeping the admin panel operational.</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className={`inline-flex items-center rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] ${maintenanceStatus.maintenanceMode ? 'bg-rose-500/15 text-rose-400' : 'bg-emerald-500/15 text-emerald-400'}`}>
+                      {maintenanceStatus.loading ? 'Checking...' : maintenanceStatus.maintenanceMode ? 'Maintenance On' : 'Live'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleMaintenanceToggle(!maintenanceStatus.maintenanceMode)}
+                      disabled={maintenanceStatus.loading}
+                      className={`rounded-2xl px-5 py-3 text-xs font-black uppercase tracking-[0.2em] transition ${maintenanceStatus.maintenanceMode ? 'bg-rose-600 text-white hover:bg-rose-500' : 'bg-emerald-600 text-white hover:bg-emerald-500'} disabled:opacity-50`}
+                    >
+                      {maintenanceStatus.maintenanceMode ? 'Turn Off' : 'Turn On'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               {/* Section: Contact */}
               <div className="bg-zinc-900/60 border border-white/5 rounded-3xl p-7">
                 <h3 className="text-xs font-black uppercase tracking-widest text-zinc-500 mb-5">📞 Contact Info</h3>
@@ -1186,8 +1266,9 @@ export default function AdminPanel({ onLogout }) {
                            <div className="flex items-center justify-end gap-2">
                              <button 
                                onClick={async () => {
+                                 const token = localStorage.getItem('zt_token');
                                  const res = await fetch(`${API}/api/admin/users/${user._id}`, {
-                                   headers: { Authorization: `Bearer ${localStorage.getItem('zt_token')}` },
+                                   headers: token ? { Authorization: `Bearer ${token}` } : {},
                                    credentials: 'include'
                                  });
                                  if (res.ok) setSelectedUser(await res.json());

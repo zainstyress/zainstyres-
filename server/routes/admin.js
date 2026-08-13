@@ -88,6 +88,46 @@ async function updateOrderStatus(req, res) {
 router.use(isAuthenticatedUser);
 router.use(authorizeRoles('admin'));
 
+// @route   GET /api/admin/settings/maintenance
+router.get('/settings/maintenance', async (req, res) => {
+  try {
+    const doc = await db.collection('settings').doc('global').get();
+    const data = doc.exists ? (doc.data() || {}) : {};
+    return res.json({
+      success: true,
+      maintenanceMode: !!data.maintenanceMode,
+      maintenanceUpdatedAt: data.maintenanceUpdatedAt || null,
+      maintenanceUpdatedBy: data.maintenanceUpdatedBy || null,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+router.put('/settings/maintenance', async (req, res) => {
+  try {
+    const maintenanceMode = Boolean(req.body && req.body.maintenanceMode);
+    const settingsRef = db.collection('settings').doc('global');
+    const payload = {
+      maintenanceMode,
+      maintenanceUpdatedAt: new Date().toISOString(),
+      maintenanceUpdatedBy: req.user?.email || req.user?.name || 'admin',
+      updatedAt: new Date().toISOString(),
+    };
+
+    await settingsRef.set(payload, { merge: true });
+    const snapshot = await settingsRef.get();
+    return res.json({
+      success: true,
+      maintenanceMode: !!snapshot.data()?.maintenanceMode,
+      maintenanceUpdatedAt: snapshot.data()?.maintenanceUpdatedAt || null,
+      maintenanceUpdatedBy: snapshot.data()?.maintenanceUpdatedBy || null,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // @route   GET /api/admin/users
 router.get('/users', async (req, res) => {
   try {

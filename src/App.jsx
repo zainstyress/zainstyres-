@@ -1092,6 +1092,64 @@ function ProtectedRoute({ children, adminOnly = false }) {
   return children;
 }
 
+function MaintenanceGuard({ children }) {
+  const { user, API } = useAuth();
+  const location = useLocation();
+  const [maintenanceMode, setMaintenanceMode] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const isAdminArea = location.pathname.startsWith('/admin') || location.pathname.startsWith('/yehlepakadmerachoco') || location.pathname.startsWith('/khelgavalo');
+
+  useEffect(() => {
+    if (isAdminArea) {
+      setIsLoading(false);
+      setMaintenanceMode(false);
+      return;
+    }
+
+    let ignore = false;
+    const loadStatus = async () => {
+      try {
+        const res = await fetch(`${API}/api/settings/maintenance`, { credentials: 'include' });
+        if (!res.ok) throw new Error('Failed to load');
+        const data = await res.json();
+        if (!ignore) setMaintenanceMode(Boolean(data?.maintenanceMode));
+      } catch (error) {
+        if (!ignore) setMaintenanceMode(false);
+      } finally {
+        if (!ignore) setIsLoading(false);
+      }
+    };
+
+    loadStatus();
+    return () => { ignore = true; };
+  }, [API, isAdminArea, location.pathname]);
+
+  if (isLoading) return <div className="min-h-screen bg-[#050505] flex items-center justify-center text-white text-xl font-black tracking-widest">Loading Site Status...</div>;
+
+  if (maintenanceMode && (!user || user.role !== 'admin')) {
+    return (
+      <div className="min-h-screen bg-[#050505] text-white flex items-center justify-center px-6">
+        <div className="max-w-xl w-full rounded-[2rem] border border-rose-500/30 bg-zinc-900/80 p-8 text-center shadow-[0_0_60px_rgba(225,29,72,0.18)] backdrop-blur-xl">
+          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-rose-600/15 text-3xl">🛠️</div>
+          <p className="text-[10px] font-black uppercase tracking-[0.4em] text-rose-400">Maintenance mode</p>
+          <h1 className="mt-3 text-4xl font-black uppercase italic tracking-tighter text-white">We’ll be right back</h1>
+          <p className="mt-4 text-sm text-zinc-300 leading-7">The store is temporarily paused for updates. Please check back shortly while we finish the service upgrade.</p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="mt-6 rounded-2xl bg-rose-600 px-6 py-3 text-sm font-black uppercase tracking-[0.2em] text-white transition hover:bg-rose-500"
+          >
+            Refresh
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return children;
+}
+
 // ─── Root App with Router ─────────────────────────────────────────────────────
 export default function App() {
   return (
@@ -1099,7 +1157,8 @@ export default function App() {
       <ToastProvider>
         <Router>
           <Suspense fallback={<PageLoader />}>
-          <Routes>
+            <MaintenanceGuard>
+              <Routes>
             <Route path="/auth" element={<AuthPage />} />
             <Route path="/login" element={<AuthPage />} />
             <Route path="/signup" element={<AuthPage />} />
@@ -1157,6 +1216,7 @@ export default function App() {
             <Route path="/order-confirmation/:orderId" element={<OrderSuccess />} />
             <Route path="/*" element={<PublicApp />} />
           </Routes>
+            </MaintenanceGuard>
           </Suspense>
         </Router>
       </ToastProvider>

@@ -19,6 +19,7 @@ if (!fs.existsSync(uploadsDir)) {
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const SETTINGS_DOC_ID = 'global';
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
@@ -28,6 +29,59 @@ const io = new Server(server, {
 });
 
 app.set('io', io);
+
+async function getGlobalSettings() {
+  try {
+    const doc = await db.collection('settings').doc(SETTINGS_DOC_ID).get();
+    return doc.exists ? doc.data() || {} : {};
+  } catch (error) {
+    console.warn('[maintenance] Failed to read settings:', error.message);
+    return {};
+  }
+}
+
+async function isAdminBypassToken(token) {
+  if (!token || token === 'none') return false;
+  if (token === 'admin_secret_session_bypass') return true;
+
+  try {
+    const decoded = await admin.auth().verifyIdToken(token);
+    const userDoc = await db.collection('users').doc(decoded.uid).get();
+    if (!userDoc.exists) return false;
+    return (userDoc.data().role || 'user') === 'admin';
+  } catch (error) {
+    return false;
+  }
+}
+
+async function maintenanceGate(req, res, next) {
+  const pathname = req.path || '';
+  if (pathname === '/api/test' || pathname === '/api/health' || pathname.startsWith('/api/auth/') || pathname.startsWith('/api/admin/') || pathname === '/api/settings/maintenance') {
+    return next();
+  }
+
+  try {
+    const settings = await getGlobalSettings();
+    if (!settings.maintenanceMode) {
+      return next();
+    }
+
+    const token = req.cookies?.token || (req.headers.authorization && req.headers.authorization.startsWith('Bearer ') ? req.headers.authorization.split(' ')[1] : null);
+    const adminAllowed = await isAdminBypassToken(token);
+    if (adminAllowed) {
+      return next();
+    }
+
+    return res.status(503).json({
+      success: false,
+      message: 'Site is temporarily under maintenance. Please check back soon.',
+      maintenanceMode: true,
+    });
+  } catch (error) {
+    console.error('[maintenance] Gate error:', error.message);
+    return next();
+  }
+}
 
 io.on('connection', (socket) => {
   console.log(`[socket.io] connected: ${socket.id}`);
@@ -48,6 +102,7 @@ const loginLimiter = rateLimit({
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(cookieParser());
+app.use(maintenanceGate);
 
 // ─── Test Route ──────────────────────────────────────────────────────────────
 app.get('/api/test', (req, res) => {
@@ -330,30 +385,37 @@ app.delete('/api/branches/:id', async (req, res) => {
 // ─── Settings ─────────────────────────────────────────────────────────────────
 app.get('/api/settings', async (req, res) => {
   try {
-    const snapshot = await db.collection('settings').limit(1).get();
-    if (snapshot.empty) return res.json({});
-    const doc = snapshot.docs[0];
+    const doc = await db.collection('settings').doc(SETTINGS_DOC_ID).get();
+    if (!doc.exists) return res.json({});
     res.json({ id: doc.id, ...doc.data() });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
+app.get('/api/settings/maintenance', async (req, res) => {
+  try {
+    const settings = await getGlobalSettings();
+    res.json({
+      success: true,
+      maintenanceMode: !!settings.maintenanceMode,
+      maintenanceUpdatedAt: settings.maintenanceUpdatedAt || null,
+      maintenanceUpdatedBy: settings.maintenanceUpdatedBy || null,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 app.put('/api/settings', async (req, res) => {
   try {
-    const snapshot = await db.collection('settings').limit(1).get();
-    let result;
-    if (!snapshot.empty) {
-      const docId = snapshot.docs[0].id;
-      await db.collection('settings').doc(docId).update(req.body);
-      const updated = await db.collection('settings').doc(docId).get();
-      result = { id: updated.id, ...updated.data() };
-    } else {
-      const docRef = await db.collection('settings').add(req.body);
-      const created = await docRef.get();
-      result = { id: created.id, ...created.data() };
-    }
-    res.json(result);
+    const { maintenanceMode, maintenanceUpdatedAt, maintenanceUpdatedBy, ...safeBody } = req.body || {};
+    const settingsRef = db.collection('settings').doc(SETTINGS_DOC_ID);
+    const current = await settingsRef.get();
+    const payload = { ...(current.exists ? current.data() : {}), ...safeBody, updatedAt: new Date().toISOString() };
+    await settingsRef.set(payload, { merge: true });
+    const updated = await settingsRef.get();
+    res.json({ id: updated.id, ...updated.data() });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

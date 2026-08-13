@@ -26,7 +26,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 4000) {
 }
 
 export function AuthProvider({ children }) {
-  const API = "";
+  const API = import.meta.env.VITE_API_URL || "";
   const [currentUser, setCurrentUser] = useState(null);
   const [role, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
