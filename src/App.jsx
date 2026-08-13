@@ -13,7 +13,8 @@ import PageLoader from './components/PageLoader';
 import SiteNavbar from './components/Navbar';
 import BranchCard from './components/BranchCard';
 import { fadeInUp, fadeInLeft, fadeInRight, staggerContainer, scaleUp } from './components/AnimationSuite';
-import { listenActiveBranches } from './lib/branches';
+import { normalizeProductImages } from './lib/media';
+import { calculateTyrePricing } from './lib/tyres';
 import AdminPanel from './pages/AdminPanel';
 
 const AuthPage = lazy(() => import('./pages/AuthPage'));
@@ -234,6 +235,7 @@ const Navbar = ({ cartCount, onOpenCart, onNavigate, currentView, settings }) =>
 // ─── Product Card ─────────────────────────────────────────────────────────────
 const ProductCard = ({ product, onAddToCart, settings }) => {
   const images = product.images && product.images.length > 0 ? product.images : [product.image || 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=400'];
+  const pricing = calculateTyrePricing(product);
   const [currentIdx, setCurrentIdx] = useState(0);
   const whatsappNumber = settings?.whatsapp || '917006628255';
   const navigate = useNavigate();
@@ -311,7 +313,10 @@ const ProductCard = ({ product, onAddToCart, settings }) => {
       <div className="flex items-end justify-between border-t border-white/5 pt-3 md:pt-6">
         <div>
           <p className="mb-1 hidden text-[9px] font-black uppercase tracking-[0.3em] text-zinc-600 md:block">Acquisition Cost</p>
-          <p className="text-lg font-black italic tracking-tighter text-white md:text-3xl">₹{(product.price || 0).toLocaleString()}</p>
+          {pricing.hasDiscount && (
+            <p className="text-xs text-zinc-500 line-through">₹{Number(pricing.originalPrice).toLocaleString('en-IN')}</p>
+          )}
+          <p className="text-lg font-black italic tracking-tighter text-white md:text-3xl">₹{Number(pricing.discountedPrice).toLocaleString('en-IN')}</p>
         </div>
         <div className="rounded-xl border border-white/5 bg-white/5 p-2 text-[10px] font-black uppercase tracking-widest text-zinc-500 md:p-3">
            {product.category}
@@ -321,14 +326,14 @@ const ProductCard = ({ product, onAddToCart, settings }) => {
       <div className="mt-3 grid gap-2 md:mt-6 md:gap-3">
         <button
           type="button"
-          onClick={() => onAddToCart(product)}
+          onClick={() => onAddToCart({ ...product, price: pricing.discountedPrice })}
           className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl bg-white px-3 py-2 text-xs font-black italic uppercase tracking-tighter text-black transition-all hover:bg-zinc-200 md:px-0 md:py-4 md:text-sm"
         >
           <Plus size={18} /> Add to Bag
         </button>
         <button
           type="button"
-          onClick={() => handleBuyNow(product, () => navigate('/checkout'))}
+          onClick={() => handleBuyNow({ ...product, price: pricing.discountedPrice }, () => navigate('/checkout'))}
           className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl bg-rose-600 px-3 py-2 text-xs font-black italic uppercase tracking-tighter text-white transition-all hover:bg-rose-700 shadow-lg shadow-rose-600/30 md:px-0 md:py-4 md:text-sm"
         >
           <Zap size={18} /> Buy Now
@@ -867,7 +872,7 @@ function PublicApp() {
     fetch(`${API}/api/products`)
       .then(r => r.ok ? r.json() : Promise.reject(new Error('Network error')))
       .then(data => { 
-        if(Array.isArray(data)) setProducts(data); 
+        if(Array.isArray(data)) setProducts(data.map((item) => normalizeProductImages(item, API))); 
         else { setProducts([]); setProductError(data?.error || 'Failed to fetch products'); }
         setLoadingProducts(false); 
       })
@@ -875,21 +880,24 @@ function PublicApp() {
 
   }, [user, API]);
 
-  useEffect(() => listenActiveBranches((nextBranches) => {
-    setBranches(nextBranches);
-    setLoadingBranches(false);
-  }, async (error) => {
-    console.warn('Public branch listener failed, falling back to API:', error?.message || error);
-    try {
-      const response = await fetch(`${API}/api/branches`);
-      const data = response.ok ? await response.json() : [];
-      setBranches(Array.isArray(data) ? data.filter((branch) => branch.isActive !== false) : []);
-    } catch {
-      setBranches([]);
-    } finally {
-      setLoadingBranches(false);
-    }
-  }), [API]);
+  useEffect(() => {
+    let cancelled = false;
+    const loadBranches = async () => {
+      try {
+        const response = await fetch(`${API}/api/branches`);
+        const data = response.ok ? await response.json() : [];
+        if (!cancelled) {
+          setBranches(Array.isArray(data) ? data.filter((branch) => branch.isActive !== false) : []);
+        }
+      } catch {
+        if (!cancelled) setBranches([]);
+      } finally {
+        if (!cancelled) setLoadingBranches(false);
+      }
+    };
+    loadBranches();
+    return () => { cancelled = true; };
+  }, [API]);
 
   useEffect(() => {
     fetch(`${API}/api/settings`)

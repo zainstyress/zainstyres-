@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { ArrowLeft, MapPin } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import BranchCard from '../components/BranchCard';
-import { listenActiveBranches } from '../lib/branches';
 
 export default function BranchesPage() {
   const [branches, setBranches] = useState([]);
@@ -11,26 +10,22 @@ export default function BranchesPage() {
   const { API } = useAuth();
 
   useEffect(() => {
-    const unsubscribe = listenActiveBranches(
-      (nextBranches) => {
-        setBranches(nextBranches);
-        setLoading(false);
-      },
-      async (error) => {
-        console.warn('Branch listener failed, falling back to API:', error?.message || error);
-        try {
-          const response = await fetch(`${API}/api/branches`);
-          const data = response.ok ? await response.json() : [];
+    let cancelled = false;
+    const loadBranches = async () => {
+      try {
+        const response = await fetch(`${API}/api/branches`);
+        const data = response.ok ? await response.json() : [];
+        if (!cancelled) {
           setBranches(Array.isArray(data) ? data.filter((branch) => branch.isActive !== false) : []);
-        } catch {
-          setBranches([]);
-        } finally {
-          setLoading(false);
         }
-      },
-    );
-
-    return () => unsubscribe();
+      } catch {
+        if (!cancelled) setBranches([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    loadBranches();
+    return () => { cancelled = true; };
   }, [API]);
 
   return (

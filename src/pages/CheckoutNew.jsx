@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
+const API = import.meta.env.VITE_API_URL || "";
+
 const STATES = [
   "Maharashtra",
   "Delhi",
@@ -184,6 +186,7 @@ export default function CheckoutNew({ cart: initialCart = [] }) {
         pincode: formData.pin.trim(),
       },
       items: cart.map((item) => ({
+        productId: item.id,
         productName: item.name,
         price: Number(item.price || 0),
         quantity: Number(item.qty || 1),
@@ -195,7 +198,7 @@ export default function CheckoutNew({ cart: initialCart = [] }) {
     };
 
     try {
-      const response = await fetch('/api/orders/confirm', {
+      const response = await fetch(`${API}/api/orders/confirm`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(confirmationPayload),

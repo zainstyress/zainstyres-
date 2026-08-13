@@ -2,8 +2,11 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronDown, Search, SlidersHorizontal, Sparkles } from 'lucide-react';
 import { calculateTyrePricing } from '../lib/tyres';
+import { normalizeProductImages } from '../lib/media';
 import TyreCard from '../components/tyres/TyreCard';
 import FilterSidebar from '../components/tyres/FilterSidebar';
+
+const API = import.meta.env.VITE_API_URL || '';
 
 const initialFilters = {
   category: 'all',
@@ -28,15 +31,16 @@ export default function TyresShop() {
     setError(null);
 
     try {
-      const response = await fetch('/api/products');
+      const response = await fetch(`${API}/api/products`);
       const data = await response.json();
 
       if (!response.ok) {
         throw new Error(data?.error || 'Failed to load products.');
       }
 
-      setTyres(Array.isArray(data) ? data : []);
-      setFeatured(Array.isArray(data) ? data.filter((item) => item.isFeatured || item.featured || Number(item.rating || 0) >= 4.2).slice(0, 6) : []);
+      const normalized = Array.isArray(data) ? data.map((item) => normalizeProductImages(item, API)) : [];
+      setTyres(normalized);
+      setFeatured(normalized.filter((item) => item.isFeatured || item.featured || Number(item.rating || 0) >= 4.2).slice(0, 6));
     } catch (err) {
       console.error('Failed to load products:', err);
       setTyres([]);

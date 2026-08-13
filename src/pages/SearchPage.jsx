@@ -7,6 +7,9 @@ import SiteNavbar from '../components/Navbar';
 import SearchBar from '../components/SearchBar';
 import useSearch from '../hooks/useSearch';
 import { calculateTyrePricing } from '../lib/tyres';
+import { normalizeProductImages } from '../lib/media';
+
+const API = import.meta.env.VITE_API_URL || '';
 
 const initialFilters = {
   category: 'all',
@@ -64,7 +67,7 @@ export default function SearchPage() {
 
     const fetchProducts = async () => {
       try {
-        const response = await fetch('/api/products');
+        const response = await fetch(`${API}/api/products`);
         const data = await response.json();
 
         if (!response.ok) {
@@ -72,7 +75,8 @@ export default function SearchPage() {
         }
 
         if (!mounted) return;
-        setTyres(Array.isArray(data) ? data.filter((tyre) => tyre.isActive !== false) : []);
+        const normalized = Array.isArray(data) ? data.filter((tyre) => tyre.isActive !== false).map((item) => normalizeProductImages(item, API)) : [];
+        setTyres(normalized);
       } catch (error) {
         console.error('Search page failed to load products:', error);
         if (!mounted) return;

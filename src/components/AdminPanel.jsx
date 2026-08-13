@@ -9,8 +9,9 @@ import {
 import { useAuth } from '../context/AuthContext';
 import CameraModal from './CameraModal';
 import { db } from '../firebase';
+import { resolveImageUrl } from '../lib/media';
 
-const API = ''; // Proxy-aware API URL
+const API = import.meta.env.VITE_API_URL || ''; // Backend base URL from env
 
 const MAX_IMAGES = 10;
 
@@ -114,12 +115,14 @@ const ProductModal = ({ initial, onClose, onSave }) => {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Upload failed');
 
+      const resolvedUrls = (data.urls || []).map((u) => resolveImageUrl(u, API));
+
       setForm((current) => {
-        const newImages = [...(current.images || []), ...data.urls].slice(0, MAX_IMAGES);
+        const newImages = [...(current.images || []), ...resolvedUrls].slice(0, MAX_IMAGES);
         return { ...current, images: newImages, image: newImages[0] || '' };
       });
     } catch (err) {
-      setError('Image upload failed. Is backend running?');
+      setError(`Image upload failed: ${err.message || 'Unknown error'}`);
     } finally {
       setUploading(false);
     }
@@ -283,12 +286,14 @@ const BranchModal = ({ initial, onClose, onSave }) => {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Upload failed');
 
+      const resolvedUrls = (data.urls || []).map((u) => resolveImageUrl(u, API));
+
       setForm((current) => ({
         ...current,
-        images: [...(current.images || []), ...data.urls].slice(0, MAX_IMAGES),
+        images: [...(current.images || []), ...resolvedUrls].slice(0, MAX_IMAGES),
       }));
     } catch (err) {
-      setUploadError('Image upload failed. Please try again.');
+      setUploadError(`Image upload failed: ${err.message || 'Unknown error'}`);
     } finally {
       setUploading(false);
     }

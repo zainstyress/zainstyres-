@@ -104,7 +104,7 @@ function StatCard({ label, value, accent }) {
 }
 
 export default function AdminDashboard() {
-  const { logout } = useAuth();
+  const { logout, API } = useAuth();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -118,7 +118,7 @@ export default function AdminDashboard() {
   const loadOrders = useCallback(async ({ announceNewIds = [] } = {}) => {
     setLoading(true);
     try {
-      const response = await fetch('/api/admin/orders', { credentials: 'include' });
+      const response = await fetch(`${API}/api/admin/orders`, { credentials: 'include' });
       const data = await response.json();
 
       if (!response.ok || !data.success) {
