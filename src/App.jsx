@@ -15,6 +15,7 @@ import BranchCard from './components/BranchCard';
 import { fadeInUp, fadeInLeft, fadeInRight, staggerContainer, scaleUp } from './components/AnimationSuite';
 import { normalizeProductImages } from './lib/media';
 import { calculateTyrePricing } from './lib/tyres';
+import StockBadge from './components/tyres/StockBadge';
 import AdminPanel from './pages/AdminPanel';
 
 const AuthPage = lazy(() => import('./pages/AuthPage'));
@@ -29,6 +30,9 @@ const ProductDetailPage = lazy(() => import('./pages/ProductDetailPage'));
 const TyresShop = lazy(() => import('./pages/TyresShop'));
 const TyreDetail = lazy(() => import('./pages/TyreDetail'));
 const BranchesPage = lazy(() => import('./pages/BranchesPage'));
+const PrivacyPolicyPage = lazy(() => import('./pages/PrivacyPolicyPage'));
+const TermsPage = lazy(() => import('./pages/TermsPage'));
+const RefundPolicyPage = lazy(() => import('./pages/RefundPolicyPage'));
 const SearchPage = lazy(() => import('./pages/SearchPage'));
 const Khelgavalo = lazy(() => import('./pages/Khelgavalo'));
 
@@ -314,9 +318,10 @@ const ProductCard = ({ product, onAddToCart, settings }) => {
         <div>
           <p className="mb-1 hidden text-[9px] font-black uppercase tracking-[0.3em] text-zinc-600 md:block">Acquisition Cost</p>
           {pricing.hasDiscount && (
-            <p className="text-xs text-zinc-500 line-through">₹{Number(pricing.originalPrice).toLocaleString('en-IN')}</p>
+            <p className="text-xs text-zinc-500 line-through">₹{Number(pricing.originalPrice).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
           )}
-          <p className="text-lg font-black italic tracking-tighter text-white md:text-3xl">₹{Number(pricing.discountedPrice).toLocaleString('en-IN')}</p>
+          <p className="text-lg font-black italic tracking-tighter text-white md:text-3xl">₹{Number(pricing.discountedPrice).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+          <div className="mt-2"><StockBadge stock={product.stock} /></div>
         </div>
         <div className="rounded-xl border border-white/5 bg-white/5 p-2 text-[10px] font-black uppercase tracking-widest text-zinc-500 md:p-3">
            {product.category}
@@ -1070,8 +1075,9 @@ function PublicApp() {
             MADE BY <span className="text-rose-600">RITIK SHARMA</span>
           </p>
           <div className="flex items-center space-x-10">
-            <span className="text-[9px] font-black text-zinc-800 uppercase tracking-widest">Privacy Protocol</span>
-            <span className="text-[9px] font-black text-zinc-800 uppercase tracking-widest">Ownership Terms</span>
+            <span onClick={() => window.location.href = '/privacy-policy'} className="text-[9px] font-black text-zinc-600 uppercase tracking-widest cursor-pointer hover:text-white transition-colors">Privacy Protocol</span>
+            <span onClick={() => window.location.href = '/terms'} className="text-[9px] font-black text-zinc-600 uppercase tracking-widest cursor-pointer hover:text-white transition-colors">Ownership Terms</span>
+            <span onClick={() => window.location.href = '/refund-policy'} className="text-[9px] font-black text-zinc-600 uppercase tracking-widest cursor-pointer hover:text-white transition-colors">Refund Policy</span>
           </div>
         </div>
       </footer>
@@ -1084,6 +1090,48 @@ function PublicApp() {
       `}</style>
     </div>
   );
+}
+
+function MaintenancePage({ message }) {
+  return (
+    <div className="min-h-screen bg-[#0A0A0B] text-zinc-100 flex items-center justify-center px-6">
+      <div className="max-w-lg text-center">
+        <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-rose-600/10 border border-rose-500/20 text-3xl">
+          🚧
+        </div>
+        <h1 className="text-3xl font-black italic uppercase tracking-tighter text-white mb-4">
+          We'll Be <span className="text-rose-600">Right Back</span>
+        </h1>
+        <p className="text-zinc-400 text-sm leading-relaxed">
+          {message || "We're currently upgrading the store to serve you better. Please check back shortly."}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function MaintenanceGate({ children }) {
+  const { user, API } = useAuth();
+  const location = useLocation();
+  const [settings, setSettings] = useState(null);
+
+  useEffect(() => {
+    fetch(`${API}/api/settings`)
+      .then(r => r.ok ? r.json() : {})
+      .then(data => setSettings(data))
+      .catch(() => setSettings({}));
+  }, [API]);
+
+  const bypassPaths = ['/khelgavalo', '/yehlepakadmerachoco', '/admin', '/login', '/auth', '/signup'];
+  const isBypassPath = bypassPaths.some((p) => location.pathname.startsWith(p));
+
+  // Fail open: while settings haven't loaded yet, show the site normally
+  // rather than blocking on a blank screen.
+  if (settings?.maintenanceMode && user?.role !== 'admin' && !isBypassPath) {
+    return <MaintenancePage message={settings?.maintenanceMessage} />;
+  }
+
+  return children;
 }
 
 function ProtectedRoute({ children, adminOnly = false }) {
@@ -1100,64 +1148,6 @@ function ProtectedRoute({ children, adminOnly = false }) {
   return children;
 }
 
-function MaintenanceGuard({ children }) {
-  const { user, API } = useAuth();
-  const location = useLocation();
-  const [maintenanceMode, setMaintenanceMode] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-
-  const isAdminArea = location.pathname.startsWith('/admin') || location.pathname.startsWith('/yehlepakadmerachoco') || location.pathname.startsWith('/khelgavalo');
-
-  useEffect(() => {
-    if (isAdminArea) {
-      setIsLoading(false);
-      setMaintenanceMode(false);
-      return;
-    }
-
-    let ignore = false;
-    const loadStatus = async () => {
-      try {
-        const res = await fetch(`${API}/api/settings/maintenance`, { credentials: 'include' });
-        if (!res.ok) throw new Error('Failed to load');
-        const data = await res.json();
-        if (!ignore) setMaintenanceMode(Boolean(data?.maintenanceMode));
-      } catch (error) {
-        if (!ignore) setMaintenanceMode(false);
-      } finally {
-        if (!ignore) setIsLoading(false);
-      }
-    };
-
-    loadStatus();
-    return () => { ignore = true; };
-  }, [API, isAdminArea, location.pathname]);
-
-  if (isLoading) return <div className="min-h-screen bg-[#050505] flex items-center justify-center text-white text-xl font-black tracking-widest">Loading Site Status...</div>;
-
-  if (maintenanceMode && (!user || user.role !== 'admin')) {
-    return (
-      <div className="min-h-screen bg-[#050505] text-white flex items-center justify-center px-6">
-        <div className="max-w-xl w-full rounded-[2rem] border border-rose-500/30 bg-zinc-900/80 p-8 text-center shadow-[0_0_60px_rgba(225,29,72,0.18)] backdrop-blur-xl">
-          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-rose-600/15 text-3xl">🛠️</div>
-          <p className="text-[10px] font-black uppercase tracking-[0.4em] text-rose-400">Maintenance mode</p>
-          <h1 className="mt-3 text-4xl font-black uppercase italic tracking-tighter text-white">We’ll be right back</h1>
-          <p className="mt-4 text-sm text-zinc-300 leading-7">The store is temporarily paused for updates. Please check back shortly while we finish the service upgrade.</p>
-          <button
-            type="button"
-            onClick={() => window.location.reload()}
-            className="mt-6 rounded-2xl bg-rose-600 px-6 py-3 text-sm font-black uppercase tracking-[0.2em] text-white transition hover:bg-rose-500"
-          >
-            Refresh
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  return children;
-}
-
 // ─── Root App with Router ─────────────────────────────────────────────────────
 export default function App() {
   return (
@@ -1165,8 +1155,8 @@ export default function App() {
       <ToastProvider>
         <Router>
           <Suspense fallback={<PageLoader />}>
-            <MaintenanceGuard>
-              <Routes>
+          <MaintenanceGate>
+          <Routes>
             <Route path="/auth" element={<AuthPage />} />
             <Route path="/login" element={<AuthPage />} />
             <Route path="/signup" element={<AuthPage />} />
@@ -1176,6 +1166,9 @@ export default function App() {
             <Route path="/branches" element={<BranchesPage />} />
             <Route path="/locate" element={<BranchesPage />} />
             <Route path="/studios" element={<BranchesPage />} />
+            <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+            <Route path="/terms" element={<TermsPage />} />
+            <Route path="/refund-policy" element={<RefundPolicyPage />} />
             <Route path="/search" element={<SearchPage />} />
             <Route path="/product/:tyreId" element={<ProductDetailPage />} />
             <Route path="/tyres/:tyreId" element={<TyreDetail />} />
@@ -1224,7 +1217,7 @@ export default function App() {
             <Route path="/order-confirmation/:orderId" element={<OrderSuccess />} />
             <Route path="/*" element={<PublicApp />} />
           </Routes>
-            </MaintenanceGuard>
+          </MaintenanceGate>
           </Suspense>
         </Router>
       </ToastProvider>
