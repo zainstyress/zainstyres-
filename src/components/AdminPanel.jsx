@@ -993,6 +993,7 @@ export default function AdminPanel({ onLogout }) {
                         <td className="px-6 py-4 text-zinc-400 text-xs">⭐ {product.rating}</td>
                         <td className="px-6 py-4">
                           <div className="flex items-center justify-end gap-2">
+                            <a href={`/product/${product.id}`} target="_blank" rel="noopener noreferrer" title="View live product page" className="p-2 hover:bg-zinc-700 rounded-lg transition-colors text-zinc-500 hover:text-white"><Link size={15} /></a>
                             <button onClick={() => setProductModal(product)} className="p-2 hover:bg-zinc-700 rounded-lg transition-colors text-zinc-500 hover:text-white"><Edit3 size={15} /></button>
                             <button onClick={() => handleProductDelete(product.id)} disabled={deletingProduct === product.id}
                               className="p-2 hover:bg-red-500/10 hover:text-red-400 rounded-lg transition-colors text-zinc-600 disabled:opacity-40"><Trash2 size={15} /></button>

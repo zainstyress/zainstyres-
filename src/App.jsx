@@ -269,7 +269,7 @@ const ProductCard = ({ product, onAddToCart, settings }) => {
     variants={fadeInUp}
     className="group relative flex h-full min-w-0 flex-col overflow-hidden rounded-[3rem] luxury-card"
   >
-    <div className="relative h-36 overflow-hidden bg-zinc-900 group/image md:h-56">
+    <div onClick={() => navigate(`/product/${product.id}`)} className="relative h-36 overflow-hidden bg-zinc-900 group/image md:h-56 cursor-pointer">
       <img
         src={images[currentIdx]}
         alt={product.name}
@@ -310,7 +310,7 @@ const ProductCard = ({ product, onAddToCart, settings }) => {
         <span className="text-[10px] font-black uppercase tracking-widest text-zinc-600 md:text-[11px]">{product.brand}</span>
       </div>
       
-      <h3 className="mb-3 overflow-hidden text-sm font-black italic uppercase tracking-tighter text-white transition-colors group-hover:text-rose-500 md:mb-4 md:text-2xl [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
+      <h3 onClick={() => navigate(`/product/${product.id}`)} className="mb-3 overflow-hidden text-sm font-black italic uppercase tracking-tighter text-white transition-colors group-hover:text-rose-500 md:mb-4 md:text-2xl [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] cursor-pointer">
         {product.name}
       </h3>
       

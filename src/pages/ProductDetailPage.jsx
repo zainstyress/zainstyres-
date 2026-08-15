@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, BadgeCheck, MessageSquareText, ShoppingBag } from 'lucide-react';
+import { ArrowLeft, BadgeCheck, MessageSquareText, ShoppingBag, Plus, Minus } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCustomToast } from '../context/ToastContext';
-import { calculateTyrePricing, listTyreReviewsPage, listenTyre, upsertTyreReview } from '../lib/tyres';
+import { calculateTyrePricing, listTyreReviewsPage, normalizeTyre, upsertTyreReview } from '../lib/tyres';
+import { normalizeProductImages } from '../lib/media';
 import ImageGallery from '../components/ImageGallery';
 import PriceDisplay from '../components/PriceDisplay';
 import ReviewCard from '../components/ReviewCard';
@@ -23,6 +24,8 @@ export default function ProductDetailPage() {
   const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState(0);
+  const [selectedSize, setSelectedSize] = useState(null);
+  const [quantity, setQuantity] = useState(1);
   const [notice, setNotice] = useState('');
   const [addLoading, setAddLoading] = useState(false);
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
@@ -34,20 +37,31 @@ export default function ProductDetailPage() {
   useEffect(() => {
     if (!tyreId) return undefined;
 
+    let cancelled = false;
     setLoading(true);
     setNotice('');
     setTyre(null);
     setReviews([]);
 
-    const unsubscribeTyre = listenTyre(tyreId, (nextTyre) => {
-      setTyre(nextTyre);
-      setLoading(false);
-    });
-
-    return () => {
-      unsubscribeTyre();
+    const loadTyre = async () => {
+      try {
+        const response = await fetch(`${API}/api/products/${tyreId}`);
+        if (!response.ok) {
+          if (!cancelled) { setTyre(null); setLoading(false); }
+          return;
+        }
+        const data = await response.json();
+        const normalized = normalizeProductImages(normalizeTyre(tyreId, data), API);
+        if (!cancelled) { setTyre(normalized); setLoading(false); }
+      } catch {
+        if (!cancelled) { setTyre(null); setLoading(false); }
+      }
     };
-  }, [tyreId]);
+
+    loadTyre();
+
+    return () => { cancelled = true; };
+  }, [tyreId, API]);
 
   const loadReviews = useCallback(async ({ reset = false } = {}) => {
     if (!tyreId) return;
@@ -80,6 +94,8 @@ export default function ProductDetailPage() {
 
   useEffect(() => {
     setSelectedImage(0);
+    setSelectedSize(null);
+    setQuantity(1);
   }, [tyre?.id]);
 
   const pricing = useMemo(() => calculateTyrePricing(tyre || {}), [tyre]);
@@ -95,7 +111,15 @@ export default function ProductDetailPage() {
   const existingReview = reviews.find((review) => review.userId === user?.id) || null;
 
   const handleAddToBag = async () => {
-    if (!tyre || tyre.stock <= 0) return;
+    if (!tyre || tyre.stock <= 0) {
+      setNotice('❌ This product is out of stock.');
+      return;
+    }
+
+    if (quantity > tyre.stock) {
+      setNotice(`❌ Only ${tyre.stock} available in stock.`);
+      return;
+    }
 
     setAddLoading(true);
     setNotice('');
@@ -104,17 +128,26 @@ export default function ProductDetailPage() {
       // Add to localStorage for checkout (works without login)
       const saved = localStorage.getItem('cartItems') || '[]';
       const cartItems = JSON.parse(saved);
-      const existingItem = cartItems.find(item => item.id === tyre.id);
+      const cartItemId = `${tyre.id}-${selectedSize || 'default'}`;
+      const existingItem = cartItems.find(item => item.cartItemId === cartItemId);
       
       if (existingItem) {
-        existingItem.qty = (existingItem.qty || 1) + 1;
+        const newQty = (existingItem.qty || 1) + quantity;
+        if (newQty > tyre.stock) {
+          setNotice(`❌ Cannot add more. Only ${tyre.stock} available in total.`);
+          setAddLoading(false);
+          return;
+        }
+        existingItem.qty = newQty;
       } else {
         cartItems.push({
+          cartItemId,
           id: tyre.id,
           name: tyre.name,
           price: calculateTyrePricing(tyre).discountedPrice,
           image: tyre.images?.[0] || tyre.image || '',
-          qty: 1,
+          size: selectedSize || tyre.size,
+          qty: quantity,
         });
       }
       localStorage.setItem('cartItems', JSON.stringify(cartItems));
@@ -125,7 +158,7 @@ export default function ProductDetailPage() {
           await fetch(`${API}/api/cart`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ productId: tyre.id, quantity: 1 }),
+            body: JSON.stringify({ productId: tyre.id, quantity, size: selectedSize || tyre.size }),
             credentials: 'include',
           });
         } catch (e) {
@@ -133,8 +166,10 @@ export default function ProductDetailPage() {
         }
       }
 
-      // Redirect to delivery details page
-      navigate('/delivery-details');
+      // Reset quantity and show success message
+      setQuantity(1);
+      setNotice('✓ Added to bag!');
+      setTimeout(() => navigate('/delivery-details'), 800);
     } catch (error) {
       console.error('Failed to add tyre to bag', error);
       setNotice('Could not add this tyre to your bag.');
@@ -282,46 +317,146 @@ export default function ProductDetailPage() {
               <PriceDisplay tyre={tyre} />
             </div>
 
+            <div className="mt-6 space-y-4">
+              {/* Size Selection */}
+              {(tyre.sizes && tyre.sizes.length > 0) && (
+                <div className="rounded-2xl border border-white/5 bg-white/[0.03] p-4">
+                  <label className="text-xs font-black uppercase tracking-[0.3em] text-zinc-500">Select Size</label>
+                  <select
+                    value={selectedSize || ''}
+                    onChange={(e) => setSelectedSize(e.target.value || null)}
+                    className="mt-3 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white placeholder-zinc-400 outline-none transition-colors focus:border-rose-500/50 focus:bg-white/10"
+                  >
+                    <option value="">Choose a size...</option>
+                    {tyre.sizes.map((size) => (
+                      <option key={size} value={size}>{size}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Quantity Selector */}
+              <div className="rounded-2xl border border-white/5 bg-white/[0.03] p-4">
+                <label className="text-xs font-black uppercase tracking-[0.3em] text-zinc-500">Quantity</label>
+                <div className="mt-3 flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                    disabled={quantity <= 1 || tyre.stock <= 0}
+                    className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-zinc-300 transition-colors hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Minus size={16} />
+                  </button>
+                  <input
+                    type="number"
+                    min="1"
+                    max={Math.max(1, tyre.stock || 0)}
+                    value={quantity}
+                    onChange={(e) => {
+                      let inputValue = parseInt(e.target.value);
+                      // If invalid input, default to 1
+                      if (isNaN(inputValue) || inputValue < 1) {
+                        inputValue = 1;
+                      }
+                      // Clamp to available stock
+                      const maxStock = Math.max(1, tyre.stock || 0);
+                      const clampedValue = Math.min(inputValue, maxStock);
+                      setQuantity(clampedValue);
+                    }}
+                    onBlur={(e) => {
+                      // Ensure value is within bounds on blur
+                      let inputValue = parseInt(e.target.value);
+                      if (isNaN(inputValue) || inputValue < 1) {
+                        setQuantity(1);
+                        return;
+                      }
+                      const maxStock = Math.max(1, tyre.stock || 0);
+                      if (inputValue > maxStock) {
+                        setQuantity(maxStock);
+                      }
+                    }}
+                    className="flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-center text-sm font-bold text-white outline-none transition-colors focus:border-rose-500/50 focus:bg-white/10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setQuantity(Math.min(Math.max(1, tyre.stock || 0), quantity + 1))}
+                    disabled={quantity >= (tyre.stock || 0) || tyre.stock <= 0}
+                    className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-zinc-300 transition-colors hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Plus size={16} />
+                  </button>
+                </div>
+                {tyre.stock <= 0 && (
+                  <p className="mt-2 text-xs text-red-400">🔴 Out of stock</p>
+                )}
+                {tyre.stock > 0 && tyre.stock <= 5 && (
+                  <p className="mt-2 text-xs text-amber-300">⚠️ Only {tyre.stock} left in stock</p>
+                )}
+              </div>
+
+              {/* Price Summary */}
+              <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 p-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-semibold text-zinc-200">Total: {quantity} x ₹{Number(pricing.discountedPrice).toLocaleString('en-IN')}</span>
+                  <span className="text-xl font-black text-rose-300">₹{Number(pricing.discountedPrice * quantity).toLocaleString('en-IN')}</span>
+                </div>
+              </div>
+            </div>
+
             <div className="mt-6 flex flex-wrap items-center gap-3">
               <button
                 type="button"
+                disabled={tyre.stock <= 0}
                 onClick={async () => {
-                  // Add product to cart then go to checkout
+                  // Add product to cart with selected size and quantity, then go to checkout
                   try {
-                    await (async () => {
-                      // reuse existing add logic
-                      if (!tyre || tyre.stock <= 0) return;
+                    if (!tyre || tyre.stock <= 0) {
+                      setNotice('❌ This product is out of stock.');
+                      return;
+                    }
 
-                      const saved = localStorage.getItem('cartItems') || '[]';
-                      const cartItems = JSON.parse(saved);
-                      const existingItem = cartItems.find(item => item.id === tyre.id);
-                      
-                      if (existingItem) {
-                        existingItem.qty = (existingItem.qty || 1) + 1;
-                      } else {
-                        cartItems.push({
-                          id: tyre.id,
-                          name: tyre.name,
-                          price: calculateTyrePricing(tyre).discountedPrice,
-                          image: tyre.images?.[0] || tyre.image || '',
-                          qty: 1,
+                    if (quantity > tyre.stock) {
+                      setNotice(`❌ Only ${tyre.stock} available in stock.`);
+                      return;
+                    }
+
+                    const saved = localStorage.getItem('cartItems') || '[]';
+                    const cartItems = JSON.parse(saved);
+                    const cartItemId = `${tyre.id}-${selectedSize || 'default'}`;
+                    const existingItem = cartItems.find(item => item.cartItemId === cartItemId);
+                    
+                    if (existingItem) {
+                      const newQty = (existingItem.qty || 1) + quantity;
+                      if (newQty > tyre.stock) {
+                        setNotice(`❌ Cannot add more. Only ${tyre.stock} available in total.`);
+                        return;
+                      }
+                      existingItem.qty = newQty;
+                    } else {
+                      cartItems.push({
+                        cartItemId,
+                        id: tyre.id,
+                        name: tyre.name,
+                        price: calculateTyrePricing(tyre).discountedPrice,
+                        image: tyre.images?.[0] || tyre.image || '',
+                        size: selectedSize || tyre.size,
+                        qty: quantity,
+                      });
+                    }
+                    localStorage.setItem('cartItems', JSON.stringify(cartItems));
+
+                    if (user) {
+                      try {
+                        await fetch(`${API}/api/cart`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ productId: tyre.id, quantity, size: selectedSize || tyre.size }),
+                          credentials: 'include',
                         });
+                      } catch (e) {
+                        console.error('Backend sync failed', e);
                       }
-                      localStorage.setItem('cartItems', JSON.stringify(cartItems));
-
-                      if (user) {
-                        try {
-                          await fetch(`${API}/api/cart`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ productId: tyre.id, quantity: 1 }),
-                            credentials: 'include',
-                          });
-                        } catch (e) {
-                          console.error('Backend sync failed', e);
-                        }
-                      }
-                    })();
+                    }
 
                     navigate('/checkout');
                   } catch (err) {
@@ -329,20 +464,28 @@ export default function ProductDetailPage() {
                     setNotice('Could not proceed to checkout. Please try again.');
                   }
                 }}
-                className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-white px-5 py-4 text-sm font-black uppercase tracking-[0.25em] text-black transition-transform hover:scale-[1.01]"
+                className={`inline-flex flex-1 items-center justify-center gap-2 rounded-2xl px-5 py-4 text-sm font-black uppercase tracking-[0.25em] transition-transform ${
+                  tyre.stock <= 0
+                    ? 'bg-zinc-600 text-zinc-300 cursor-not-allowed opacity-50'
+                    : 'bg-white text-black hover:scale-[1.01]'
+                }`}
               >
                 <ShoppingBag size={16} />
-                Buy now
+                {tyre.stock <= 0 ? 'Sold Out' : 'Buy now'}
               </button>
 
               <button
                 type="button"
                 onClick={handleAddToBag}
                 disabled={addLoading || tyre.stock <= 0}
-                className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl border border-rose-500/20 bg-rose-500/10 px-5 py-4 text-sm font-black uppercase tracking-[0.25em] text-rose-200 transition-colors hover:bg-rose-500/15 disabled:cursor-not-allowed disabled:opacity-50"
+                className={`inline-flex flex-1 items-center justify-center gap-2 rounded-2xl px-5 py-4 text-sm font-black uppercase tracking-[0.25em] transition-colors ${
+                  tyre.stock <= 0
+                    ? 'border border-zinc-600/20 bg-zinc-600/10 text-zinc-300 cursor-not-allowed opacity-50'
+                    : 'border border-rose-500/20 bg-rose-500/10 text-rose-200 hover:bg-rose-500/15 disabled:cursor-not-allowed disabled:opacity-50'
+                }`}
               >
                 <ShoppingBag size={16} />
-                {addLoading ? 'Adding...' : 'Add to bag'}
+                {tyre.stock <= 0 ? 'Sold Out' : addLoading ? 'Adding...' : 'Add to bag'}
               </button>
             </div>
 
