@@ -1,4 +1,4 @@
-import{f as A,r,R as B,n as M,c as l,j as e,S as $,L as k,k as R}from"./index-BrCxEXWu.js";import{F as D,T as S}from"./FilterSidebar-C_sDl7ge.js";import"./message-square-text-D1lajfCb.js";/**
+import{f as A,r,R as B,n as M,c as l,j as e,S as $,L as k,k as R}from"./index-DkQenKYI.js";import{F as D,T as S}from"./FilterSidebar-o4JNqVaS.js";import"./message-square-text-BHw2IzFE.js";/**
  * @license lucide-react v0.344.0 - ISC
  *
  * This source code is licensed under the ISC license.

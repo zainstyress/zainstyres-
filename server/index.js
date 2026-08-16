@@ -345,8 +345,9 @@ app.get('/api/branches', async (req, res) => {
     const snapshot = await db.collection('branches').get();
     const branches = snapshot.docs.map((doc) => {
       const data = doc.data();
-      const city = data.city || inferCityFromAddress(data.address) || '';
-      return { id: doc.id, ...data, city };
+      const timings = (data.timings ?? data.hours ?? 'Timings not available').toString().trim();
+      const city = (data.city ?? inferCityFromAddress(data.address) ?? '').toString().trim();
+      return { id: doc.id, ...data, city, timings, hours: timings };
     });
     res.json(branches);
   } catch (err) {
@@ -361,23 +362,28 @@ function inferCityFromAddress(address) {
   return (parts[parts.length - 2] || parts[0]).replace(/\s+/g, ' ');
 }
 
+function normalizeBranchPayload(raw = {}) {
+  const timings = (raw.timings ?? raw.hours ?? '9 AM - 6 PM').toString().trim();
+  const city = (raw.city ?? inferCityFromAddress(raw.address) ?? '').toString().trim();
+
+  return {
+    ...raw,
+    city,
+    timings,
+    hours: timings,
+    mapLink: raw.mapLink ?? raw.map_link ?? '',
+    map_link: raw.mapLink ?? raw.map_link ?? '',
+    created_at: raw.created_at ?? new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+}
+
 app.post('/api/branches', async (req, res) => {
   try {
-    const { name, address, phone, city } = req.body;
+    const { name, address, phone } = req.body;
     if (!name || !address || !phone) return res.status(400).json({ error: 'name, address, phone required' });
 
-    const resolvedCity = city || inferCityFromAddress(address) || '';
-
-    const branchData = {
-      name,
-      address,
-      city: resolvedCity,
-      phone,
-      hours: req.body.hours || '9 AM - 6 PM',
-      map_link: req.body.mapLink || '',
-      created_at: new Date().toISOString()
-    };
-
+    const branchData = normalizeBranchPayload(req.body);
     const docRef = await db.collection('branches').add(branchData);
     res.status(201).json({ id: docRef.id, ...branchData });
   } catch (err) {
@@ -387,7 +393,8 @@ app.post('/api/branches', async (req, res) => {
 
 app.put('/api/branches/:id', async (req, res) => {
   try {
-    await db.collection('branches').doc(req.params.id).update(req.body);
+    const payload = normalizeBranchPayload(req.body);
+    await db.collection('branches').doc(req.params.id).update(payload);
     const updatedDoc = await db.collection('branches').doc(req.params.id).get();
     res.json({ id: updatedDoc.id, ...updatedDoc.data() });
   } catch (err) {

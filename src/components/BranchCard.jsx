@@ -24,6 +24,7 @@ export default function BranchCard({ branch, variant = 'full', onViewBranch }) {
   const activeImage = images[activeImageIndex] || images[0] || '';
   const isCompact = variant === 'compact';
   const cityLabel = branch.city || inferCityFromAddress(branch.address) || 'Mumbai';
+  const timingsLabel = branch.timings || branch.hours || 'Timings not available';
 
   const handleDirections = () => {
     if (branch.mapLink) {
@@ -103,7 +104,7 @@ export default function BranchCard({ branch, variant = 'full', onViewBranch }) {
             </p>
             <p className="flex items-start gap-2">
               <Clock3 size={16} className="mt-0.5 shrink-0 text-rose-500" />
-              <span>{branch.timings || 'Timings not available'}</span>
+              <span>{timingsLabel}</span>
             </p>
             <p className="flex items-start gap-2">
               <PhoneCall size={16} className="mt-0.5 shrink-0 text-rose-500" />

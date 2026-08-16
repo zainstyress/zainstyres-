@@ -254,8 +254,8 @@ const ProductModal = ({ initial, onClose, onSave }) => {
 
 // ─── Add / Edit Branch Modal ──────────────────────────────────────────────────
 const BranchModal = ({ initial, onClose, onSave }) => {
-  const blank = { name: '', address: '', city: '', phone: '', hours: '9 AM - 6 PM', mapLink: '', images: [] };
-  const [form, setForm] = useState(initial ? { ...initial, city: initial.city || '', images: initial.images || [] } : blank);
+  const blank = { name: '', address: '', city: '', phone: '', timings: '9 AM - 6 PM', hours: '9 AM - 6 PM', mapLink: '', images: [] };
+  const [form, setForm] = useState(initial ? { ...initial, city: initial.city || '', timings: initial.timings || initial.hours || '9 AM - 6 PM', hours: initial.hours || initial.timings || '9 AM - 6 PM', images: initial.images || [] } : blank);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -319,7 +319,8 @@ const BranchModal = ({ initial, onClose, onSave }) => {
     try {
       const url = initial ? `${API}/api/branches/${initial.id}` : `${API}/api/branches`;
       const method = initial ? 'PUT' : 'POST';
-      const payload = { ...form };
+      const normalizedTimings = (form.timings || form.hours || '9 AM - 6 PM').trim();
+      const payload = { ...form, timings: normalizedTimings, hours: normalizedTimings };
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Save failed');
@@ -341,7 +342,7 @@ const BranchModal = ({ initial, onClose, onSave }) => {
           <Field label="Full Address *" value={form.address} onChange={set('address')} placeholder="Area, City, PIN" />
           <Field label="City" value={form.city} onChange={set('city')} placeholder="e.g. Jammu" />
           <Field label="Phone *" value={form.phone} onChange={set('phone')} placeholder="+91 98765 43210" />
-          <Field label="Opening Hours" value={form.hours} onChange={set('hours')} placeholder="9 AM - 9 PM" />
+          <Field label="Opening Hours" value={form.timings || form.hours || ''} onChange={(value) => { set('timings')(value); set('hours')(value); }} placeholder="9 AM - 9 PM" />
           <Field label="Google Maps Link" value={form.mapLink} onChange={set('mapLink')} placeholder="https://maps.google.com/..." />
           <div>
             <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-1.5 block">Branch Images</label>
