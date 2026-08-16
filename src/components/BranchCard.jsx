@@ -10,11 +10,20 @@ function getWhatsAppLink(branchName, whatsapp) {
   return `https://wa.me/${phone}?text=${message}`;
 }
 
+function inferCityFromAddress(address) {
+  if (!address || typeof address !== 'string') return '';
+  const parts = address.split(',').map((part) => part.trim()).filter(Boolean);
+  if (parts.length <= 1) return '';
+  const cityCandidate = parts[parts.length - 2] || parts[0];
+  return cityCandidate.replace(/\s+/g, ' ');
+}
+
 export default function BranchCard({ branch, variant = 'full', onViewBranch }) {
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const images = useMemo(() => (Array.isArray(branch.images) ? branch.images.filter(Boolean) : []), [branch.images]);
   const activeImage = images[activeImageIndex] || images[0] || '';
   const isCompact = variant === 'compact';
+  const cityLabel = branch.city || inferCityFromAddress(branch.address) || 'Mumbai';
 
   const handleDirections = () => {
     if (branch.mapLink) {
@@ -80,7 +89,7 @@ export default function BranchCard({ branch, variant = 'full', onViewBranch }) {
                   </span>
                 )}
               </div>
-              {!isCompact && <p className="mt-1 text-sm font-medium uppercase tracking-[0.2em] text-zinc-500">{branch.city || 'Mumbai'}</p>}
+              {!isCompact && <p className="mt-1 text-sm font-medium uppercase tracking-[0.2em] text-zinc-500">{cityLabel}</p>}
             </div>
             {!isCompact && (
               <BadgeCheck size={20} className={`shrink-0 ${branch.isActive ? 'text-emerald-400' : 'text-zinc-600'}`} />

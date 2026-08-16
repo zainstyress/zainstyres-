@@ -42,6 +42,7 @@ export default function NewAdminBranches() {
           <article key={branch.id}>
             <input value={branch.name || ""} onChange={(e) => setBranch(branch.id, "name", e.target.value)} placeholder="Branch name" />
             <input value={branch.address || ""} onChange={(e) => setBranch(branch.id, "address", e.target.value)} placeholder="Address" />
+            <input value={branch.city || ""} onChange={(e) => setBranch(branch.id, "city", e.target.value)} placeholder="City" />
             <input value={branch.phone || ""} onChange={(e) => setBranch(branch.id, "phone", e.target.value)} placeholder="Phone" />
             <input value={branch.timings || ""} onChange={(e) => setBranch(branch.id, "timings", e.target.value)} placeholder="Timings" />
             <input value={branch.mapsUrl || ""} onChange={(e) => setBranch(branch.id, "mapsUrl", e.target.value)} placeholder="Google Maps link" />

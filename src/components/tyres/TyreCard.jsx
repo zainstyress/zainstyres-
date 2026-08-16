@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ChevronRight, Star, ShoppingBag, MessageSquareText } from 'lucide-react';
 import StockBadge from './StockBadge';
@@ -14,26 +14,38 @@ export default function TyreCard({ tyre }) {
   const navigate = useNavigate();
   const { toast } = useCustomToast();
   const whatsappNumber = '917006628255';
+  const addInFlightRef = useRef(false);
 
   const handleAddToBag = async (event) => {
-    event.preventDefault();
-    event.stopPropagation();
+    if (addInFlightRef.current) return;
+    addInFlightRef.current = true;
+
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
 
     try {
+      const stockLimit = Math.max(1, Number(tyre.stock || 1));
+      const requestedQty = Math.min(stockLimit, Math.max(1, Number(tyre.qty ?? tyre.quantity ?? 1) || 1));
+
       // Add to localStorage for checkout (works without login)
       const saved = localStorage.getItem('cartItems') || '[]';
       const cartItems = JSON.parse(saved);
       const existingItem = cartItems.find(item => item.id === tyre.id);
       
       if (existingItem) {
-        existingItem.qty = (existingItem.qty || 1) + 1;
+        const nextQty = Math.min(stockLimit, Math.max(1, Number(existingItem.qty || 1)) + requestedQty);
+        existingItem.qty = nextQty;
+        existingItem.stock = stockLimit;
       } else {
         cartItems.push({
           id: tyre.id,
           name: tyre.name,
           price: pricing.discountedPrice,
           image: tyre.images?.[0] || tyre.image || '',
-          qty: 1,
+          qty: requestedQty,
+          stock: stockLimit,
         });
       }
       localStorage.setItem('cartItems', JSON.stringify(cartItems));
@@ -44,7 +56,7 @@ export default function TyreCard({ tyre }) {
           await fetch(`${API}/api/cart`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ productId: tyre.id, quantity: 1 }),
+            body: JSON.stringify({ productId: tyre.id, quantity: requestedQty }),
             credentials: 'include',
           });
         } catch (e) {
@@ -56,6 +68,8 @@ export default function TyreCard({ tyre }) {
       navigate('/delivery-details');
     } catch {
       toast.error('Could not add this tyre to your bag.');
+    } finally {
+      addInFlightRef.current = false;
     }
   };
 
@@ -102,9 +116,9 @@ export default function TyreCard({ tyre }) {
           <div>
             <div className="flex items-baseline gap-2">
               {pricing.hasDiscount && (
-                <p className="text-xs text-zinc-500 line-through">₹{Number(pricing.originalPrice).toLocaleString('en-IN')}</p>
+                <p className="text-xs text-zinc-500 line-through">₹{Number(pricing.originalPrice).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
               )}
-              <p className="text-lg font-black text-[#E24B4A] md:text-2xl">₹{Number(pricing.discountedPrice).toLocaleString('en-IN')}</p>
+              <p className="text-lg font-black text-[#E24B4A] md:text-2xl">₹{Number(pricing.discountedPrice).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
             </div>
             <div className="mt-2"><StockBadge stock={tyre.stock} /></div>
           </div>

@@ -254,8 +254,8 @@ const ProductModal = ({ initial, onClose, onSave }) => {
 
 // ─── Add / Edit Branch Modal ──────────────────────────────────────────────────
 const BranchModal = ({ initial, onClose, onSave }) => {
-  const blank = { name: '', address: '', phone: '', hours: '9 AM - 6 PM', mapLink: '', images: [] };
-  const [form, setForm] = useState(initial ? { ...initial, images: initial.images || [] } : blank);
+  const blank = { name: '', address: '', city: '', phone: '', hours: '9 AM - 6 PM', mapLink: '', images: [] };
+  const [form, setForm] = useState(initial ? { ...initial, city: initial.city || '', images: initial.images || [] } : blank);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -339,6 +339,7 @@ const BranchModal = ({ initial, onClose, onSave }) => {
         <div className="space-y-4">
           <Field label="Branch Name *" value={form.name} onChange={set('name')} placeholder="e.g. Elite Hub: Delhi" />
           <Field label="Full Address *" value={form.address} onChange={set('address')} placeholder="Area, City, PIN" />
+          <Field label="City" value={form.city} onChange={set('city')} placeholder="e.g. Jammu" />
           <Field label="Phone *" value={form.phone} onChange={set('phone')} placeholder="+91 98765 43210" />
           <Field label="Opening Hours" value={form.hours} onChange={set('hours')} placeholder="9 AM - 9 PM" />
           <Field label="Google Maps Link" value={form.mapLink} onChange={set('mapLink')} placeholder="https://maps.google.com/..." />

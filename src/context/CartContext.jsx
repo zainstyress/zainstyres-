@@ -8,13 +8,15 @@ const CartContext = createContext(null);
 const STORAGE_KEY = "cartItems";
 
 function normalizeItem(tyre) {
+  const requestedQty = Math.max(1, Number(tyre.qty ?? tyre.quantity ?? 1) || 1);
+
   return {
     id: tyre.id,
     name: tyre.name,
     size: tyre.size || tyre.selectedSize || "",
     price: Number(tyre.price) || 0,
     image: tyre.image || tyre.imageUrl || tyre.images?.[0] || "",
-    qty: Math.max(1, Number(tyre.qty) || 1),
+    qty: requestedQty,
   };
 }
 
@@ -35,7 +37,7 @@ export function CartProvider({ children }) {
   }, [cartItems]);
 
   const addToCart = (tyre) => {
-    const nextItem = normalizeItem(tyre);
+    const nextItem = normalizeItem({ ...tyre, qty: 1, quantity: 1 });
 
     setCartItems((items) => {
       const existing = items.find((item) => item.id === nextItem.id);
@@ -46,7 +48,7 @@ export function CartProvider({ children }) {
 
       return items.map((item) =>
         item.id === nextItem.id
-          ? { ...item, qty: item.qty + nextItem.qty }
+          ? { ...item, qty: Math.max(1, Number(item.qty || 1)) + nextItem.qty }
           : item
       );
     });

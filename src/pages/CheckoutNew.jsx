@@ -139,7 +139,12 @@ export default function CheckoutNew({ cart: initialCart = [] }) {
   const updateCartQty = (itemId, nextQty) => {
     setCart((prev) =>
       prev
-        .map((item) => (item.id === itemId ? { ...item, qty: Math.max(1, Number(nextQty)) } : item))
+        .map((item) => {
+          if (item.id !== itemId) return item;
+          const stockLimit = Number(item.stock || item.productStock || 1);
+          const safeQty = Math.min(stockLimit, Math.max(1, Number(nextQty) || 1));
+          return { ...item, qty: safeQty };
+        })
         .filter((item) => item.qty > 0)
     );
   };

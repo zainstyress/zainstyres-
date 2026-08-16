@@ -26,11 +26,19 @@ const toDate = (value) => {
   return null;
 };
 
+const inferCityFromAddress = (address) => {
+  if (!address || typeof address !== 'string') return '';
+  const parts = address.split(',').map((part) => part.trim()).filter(Boolean);
+  if (parts.length <= 1) return '';
+  const candidate = parts[parts.length - 2] || parts[0];
+  return candidate.replace(/\s+/g, ' ');
+};
+
 export const normalizeBranch = (branchId, data = {}) => ({
   id: branchId,
   name: data.name || '',
   address: data.address || '',
-  city: data.city || '',
+  city: data.city || inferCityFromAddress(data.address) || '',
   phone: data.phone || '',
   whatsapp: data.whatsapp || '',
   email: data.email || '',

@@ -921,20 +921,26 @@ function PublicApp() {
   }, [user, API]);
 
   async function addToCart(p, redirectToCheckout = false) {
+    const stockLimit = Math.max(1, Number(p.stock || 1));
+    const requestedQty = Math.min(stockLimit, Math.max(1, Number(p.qty ?? p.quantity ?? 1) || 1));
+
     // Add to localStorage for checkout flow
     const saved = localStorage.getItem('cartItems') || '[]';
     const cartItems = JSON.parse(saved);
     const existingItem = cartItems.find(item => item.id === p.id);
     
     if (existingItem) {
-      existingItem.qty = (existingItem.qty || 1) + 1;
+      const nextQty = Math.min(stockLimit, Math.max(1, Number(existingItem.qty || 1)) + requestedQty);
+      existingItem.qty = nextQty;
+      existingItem.stock = stockLimit;
     } else {
       cartItems.push({
         id: p.id,
         name: p.name,
         price: p.price,
         image: p.image || p.imageUrl || p.images?.[0] || '',
-        qty: 1,
+        qty: requestedQty,
+        stock: stockLimit,
       });
     }
     localStorage.setItem('cartItems', JSON.stringify(cartItems));
@@ -945,7 +951,7 @@ function PublicApp() {
         await fetch(`${API}/api/cart`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json'},
-          body: JSON.stringify({ productId: p.id, quantity: 1 }),
+          body: JSON.stringify({ productId: p.id, quantity: requestedQty }),
           credentials: 'include'
         });
       } catch (e) { console.error('Backend cart sync failed'); }

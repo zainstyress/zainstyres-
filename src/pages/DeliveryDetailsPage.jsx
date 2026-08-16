@@ -84,15 +84,15 @@ export default function DeliveryDetailsPage() {
   const total = subtotal + tax;
 
   const updateCartQty = (itemId, nextQty) => {
-    const newQty = Math.max(1, Number(nextQty));
-    setCart((prev) =>
-      prev
-        .map((item) => (item.id === itemId ? { ...item, qty: newQty } : item))
-        .filter((item) => item.qty > 0)
-    );
-    localStorage.setItem('cartItems', JSON.stringify(
-      cart.map((item) => (item.id === itemId ? { ...item, qty: newQty } : item)).filter((item) => item.qty > 0)
-    ));
+    const updated = cart.map((item) => {
+      if (item.id !== itemId) return item;
+      const stockLimit = Number(item.stock || item.productStock || 1);
+      const newQty = Math.min(stockLimit, Math.max(1, Number(nextQty) || 1));
+      return { ...item, qty: newQty };
+    }).filter((item) => item.qty > 0);
+
+    setCart(updated);
+    localStorage.setItem('cartItems', JSON.stringify(updated));
   };
 
   const removeCartItem = (itemId) => {

@@ -343,23 +343,37 @@ app.get('/api/find', async (req, res) => {
 app.get('/api/branches', async (req, res) => {
   try {
     const snapshot = await db.collection('branches').get();
-    const branches = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const branches = snapshot.docs.map((doc) => {
+      const data = doc.data();
+      const city = data.city || inferCityFromAddress(data.address) || '';
+      return { id: doc.id, ...data, city };
+    });
     res.json(branches);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
+function inferCityFromAddress(address) {
+  if (!address || typeof address !== 'string') return '';
+  const parts = address.split(',').map((part) => part.trim()).filter(Boolean);
+  if (parts.length <= 1) return '';
+  return (parts[parts.length - 2] || parts[0]).replace(/\s+/g, ' ');
+}
+
 app.post('/api/branches', async (req, res) => {
   try {
-    const { name, address, phone } = req.body;
+    const { name, address, phone, city } = req.body;
     if (!name || !address || !phone) return res.status(400).json({ error: 'name, address, phone required' });
-    
-    const branchData = { 
-      name, 
-      address, 
-      phone, 
-      hours: req.body.hours || '9 AM - 6 PM', 
+
+    const resolvedCity = city || inferCityFromAddress(address) || '';
+
+    const branchData = {
+      name,
+      address,
+      city: resolvedCity,
+      phone,
+      hours: req.body.hours || '9 AM - 6 PM',
       map_link: req.body.mapLink || '',
       created_at: new Date().toISOString()
     };

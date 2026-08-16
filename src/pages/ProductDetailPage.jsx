@@ -420,18 +420,21 @@ export default function ProductDetailPage() {
                       return;
                     }
 
+                    const stockLimit = Math.max(1, Number(tyre.stock || 1));
+                    const requestedQty = Math.min(stockLimit, Math.max(1, Number(quantity) || 1));
                     const saved = localStorage.getItem('cartItems') || '[]';
                     const cartItems = JSON.parse(saved);
                     const cartItemId = `${tyre.id}-${selectedSize || 'default'}`;
                     const existingItem = cartItems.find(item => item.cartItemId === cartItemId);
                     
                     if (existingItem) {
-                      const newQty = (existingItem.qty || 1) + quantity;
+                      const newQty = Math.min(stockLimit, Math.max(1, Number(existingItem.qty || 1)) + requestedQty);
                       if (newQty > tyre.stock) {
                         setNotice(`❌ Cannot add more. Only ${tyre.stock} available in total.`);
                         return;
                       }
                       existingItem.qty = newQty;
+                      existingItem.stock = stockLimit;
                     } else {
                       cartItems.push({
                         cartItemId,
@@ -440,7 +443,8 @@ export default function ProductDetailPage() {
                         price: calculateTyrePricing(tyre).discountedPrice,
                         image: tyre.images?.[0] || tyre.image || '',
                         size: selectedSize || tyre.size,
-                        qty: quantity,
+                        qty: requestedQty,
+                        stock: stockLimit,
                       });
                     }
                     localStorage.setItem('cartItems', JSON.stringify(cartItems));
@@ -450,7 +454,7 @@ export default function ProductDetailPage() {
                         await fetch(`${API}/api/cart`, {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ productId: tyre.id, quantity, size: selectedSize || tyre.size }),
+                          body: JSON.stringify({ productId: tyre.id, quantity: requestedQty, size: selectedSize || tyre.size }),
                           credentials: 'include',
                         });
                       } catch (e) {
